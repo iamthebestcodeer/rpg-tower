@@ -195,8 +195,12 @@ void DrawTowers() {
             DrawCircleV(t->position, 18, turretColor);
         } else if (t->type == TOWER_TESLA || t->type == TOWER_T4_TESLA_CHAIN || t->type == TOWER_T4_TESLA_STORM) {
             DrawCircleV(t->position, 14, turretColor);
-            if (GetRandomValue(0, 15) == 0) {
-                float angle = GetRandomValue(0, 360) * DEG2RAD;
+            // Deterministic sparkle: time-based instead of per-frame RNG so the
+            // draw path doesn't churn the RNG, and rendering is reproducible
+            // for a given game state (same ~1/16 chance per tower per frame).
+            int sparkSeed = (int)(game.globalTime * 60.0f) + i * 7;
+            if (sparkSeed % 16 == 0) {
+                float angle = (float)((sparkSeed + i * 13) % 360) * DEG2RAD;
                 Vector2 end = Vector2Add(t->position, Vector2Scale((Vector2){cosf(angle), sinf(angle)}, 22));
                 DrawLineEx(t->position, end, 2.0f, Fade(turretColor, 0.8f));
             }
