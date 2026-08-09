@@ -81,7 +81,8 @@ intermediate `.o` files).
 - **Deterministic draw path:** Tesla sparkles are time-based instead of calling
   `GetRandomValue` per tower per frame.
 - **Spatial grid:** enemy queries (tower targeting, AoE, hero attacks) go
-  through the spatial grid, rebuilt once per frame.
+  through the spatial grid, rebuilt before tower queries and again before
+  projectile impacts (enemy movement invalidates cell membership mid-frame).
 
 ## Scope
 

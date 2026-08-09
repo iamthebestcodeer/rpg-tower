@@ -70,6 +70,10 @@ void ResetGame(void) {
     game.dayNightCycle = 0.0f;
     game.screenShakeDuration = 0.0f;
     game.screenShakeTime = 0.0f;
+    // Match what the first UpdateEnvironment computes at dayNightCycle = 0 (full
+    // daylight), so the first gameplay draw after starting/restarting isn't black
+    // because UpdateEnvironment is skipped while the state is GS_TITLE.
+    game.environmentColor = WHITE;
 
     // Free-list initialization
     game.nextFreeProjectile = 0;
