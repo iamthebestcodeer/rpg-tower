@@ -17,12 +17,17 @@ if ($Clean) {
 }
 
 # Requires gcc + pkg-config (MSYS2 UCRT64) on PATH
-$cflags = (pkg-config --cflags raylib).Split(' ')
-$libs   = (pkg-config --libs raylib).Split(' ')
+$cflags = (pkg-config --cflags raylib) -split '\s+' | Where-Object { $_ }
+if ($LASTEXITCODE -ne 0) { throw 'pkg-config --cflags raylib failed.' }
+$libs = (pkg-config --libs raylib) -split '\s+' | Where-Object { $_ }
+if ($LASTEXITCODE -ne 0) { throw 'pkg-config --libs raylib failed.' }
+
+$sources = (Get-ChildItem -Path $PSScriptRoot -Filter '*.c' -File).FullName
+if (-not $sources) { throw "No .c sources found in $PSScriptRoot." }
 
 $gccArgs = @('-std=c99', '-Wall', '-Wextra', '-O2') +
            $cflags +
-           (Get-ChildItem -Filter '*.c').FullName +
+           $sources +
            $libs + @('-lm', '-o', $Target)
 
 & gcc @gccArgs

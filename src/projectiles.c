@@ -167,31 +167,37 @@ void HandleProjectileImpact(Projectile* p, Enemy* primaryTarget) {
             p->hitHistory[p->hitCount++] = primaryTarget->id;
     }
 
-    // Chain lightning
+    // Chain lightning - use spatial grid and avoid reusing the just-freed slot
     if (p->sourceType == TOWER_T4_TESLA_CHAIN && p->chainCount > 0) {
+        int sourceIdx = (int)(p - game.projectiles);
         int nextTargetId = -1;
-        float minDist = 150.0f;
-        for (int j = 0; j < MAX_ENEMIES; j++) {
-            if (!game.enemies[j].active) continue;
+        float minDistSqr = 150.0f * 150.0f;
+        int nearby[MAX_ENEMIES];
+        int nearbyCount = 0;
+        GetEnemiesInRadius(p->position, 150.0f, nearby, &nearbyCount, MAX_ENEMIES);
+        for (int n = 0; n < nearbyCount; n++) {
+            int j = nearby[n];
             bool alreadyHit = false;
             for (int k = 0; k < p->hitCount; k++) {
                 if (game.enemies[j].id == p->hitHistory[k]) { alreadyHit = true; break; }
             }
             if (alreadyHit) continue;
-            float dist = Vector2Distance(p->position, game.enemies[j].position);
-            if (dist < minDist) {
-                minDist = dist;
+            float distSqr = Vector2DistanceSqr(p->position, game.enemies[j].position);
+            if (distSqr < minDistSqr) {
+                minDistSqr = distSqr;
                 nextTargetId = game.enemies[j].id;
             }
         }
         if (nextTargetId != -1) {
             int idx = -1;
             for (int k = 0; k < MAX_PROJECTILES; k++) {
+                if (k == sourceIdx) continue;
                 if (!game.projectiles[k].active) { idx = k; break; }
             }
             if (idx != -1) {
+                Projectile tmp = *p;
                 Projectile* chainP = &game.projectiles[idx];
-                memcpy(chainP, p, sizeof(Projectile));
+                *chainP = tmp;
                 chainP->active = true;
                 chainP->position = p->position;
                 int nextIndex = -1;

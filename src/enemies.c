@@ -43,8 +43,6 @@ void GetEnemiesInRadius(Vector2 center, float radius, int* outIndices, int* outC
 }
 
 void UpdateEnemies(float dt) {
-    // Grid is rebuilt once per frame in UpdateTowers; but we also need it for enemies themselves.
-    RebuildEnemyGrid(); // safe to call multiple times; but we call it once at start of UpdateTowers. To avoid double rebuild, we call here and let towers use it too (they rebuild anyway). Let's centralize: call in UpdatePlaying before both.
 
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
@@ -230,6 +228,18 @@ void SpawnEnemy(EnemyType type, Vector2 position) {
     }
     e->hp = e->maxHp;
     e->speed = e->baseSpeed;
+
+    // Insert immediately into spatial grid so same-frame queries (tower targeting /
+    // AoE) can find the new enemy even when the grid was rebuilt at frame start.
+    {
+        int cx = (int)(e->position.x / TILE_SIZE);
+        int cy = (int)(e->position.y / TILE_SIZE);
+        if (cx >= 0 && cx < GRID_COLS && cy >= 0 && cy < GRID_ROWS) {
+            GridCell *cell = &game.enemyGrid[cy][cx];
+            if (cell->count < MAX_ENEMIES_PER_CELL)
+                cell->indices[cell->count++] = index;
+        }
+    }
 }
 
 float CalculateDamage(float baseDamage, DamageType type, Enemy* target) {
@@ -282,7 +292,9 @@ void ApplyStatusEffect(Enemy* enemy, StatusEffect type, float duration, float in
         }
     }
     if (enemy->statusCount < MAX_STATUS_EFFECTS) {
-        enemy->status[enemy->statusCount] = (ActiveStatus){type, duration, intensity, 0};
+        enemy->status[enemy->statusCount] = (ActiveStatus){
+            .type = type, .duration = duration, .intensity = intensity, .timer = 0.0f
+        };
         enemy->statusCount++;
     }
 }
@@ -332,6 +344,9 @@ void ProcessStatusEffects(Enemy* enemy, float dt) {
                 enemy->visualTint = ColorTint(enemy->visualTint, SKYBLUE);
                 break;
             case STATUS_SLOW:
+                speed_multiplier *= effect->intensity;
+                enemy->visualTint = ColorAlphaBlend(enemy->visualTint, COLOR_CRYO, Fade(WHITE, 0.5f));
+                break;
             case STATUS_BRITTLE:
                 enemy->visualTint = ColorAlphaBlend(enemy->visualTint, COLOR_CRYO, Fade(WHITE, 0.5f));
                 break;

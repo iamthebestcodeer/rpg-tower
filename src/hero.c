@@ -94,7 +94,7 @@ void UpdateHero(float dt) {
     }
 }
 
-void HeroAttack() {
+void HeroAttack(void) {
     Hero* h = &game.hero;
     int nearby[MAX_ENEMIES];
     int nearbyCount = 0;

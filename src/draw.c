@@ -1,5 +1,17 @@
 #include "game.h"
 
+static int pendingHeroSkill = -1;
+
+// Called from UpdateHeroLevelUp to apply a skill queued during Draw
+void ConsumePendingHeroSkill(void) {
+    if (pendingHeroSkill >= 0 && pendingHeroSkill < NUM_HERO_SKILLS && game.hero.skillPoints > 0) {
+        game.hero.skills[pendingHeroSkill]++;
+        game.hero.skillPoints--;
+        ApplyHeroSkills();
+    }
+    pendingHeroSkill = -1;
+}
+
 //----------------------------------------------------------------------------------
 // Drawing
 //----------------------------------------------------------------------------------
@@ -21,7 +33,7 @@ void DrawGame(void) {
         DrawVFX();
         EndMode2D();
 
-        DrawUI();
+        DrawUI(game.state == GS_PLAYING);
 
         if (game.state == GS_PAUSED) {
             DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.7f));
@@ -45,16 +57,15 @@ void DrawGame(void) {
             const char* skillNames[] = {"Vigor (Attack+)", "Agility (Speed/Dash CD)", "Burst Mastery (AoE+)", "Leadership (Tower XP Aura)"};
             const char* skillDescs[] = {"Increases basic attack damage.", "Increases movement speed and reduces Dash cooldown.", "Increases Aether Burst damage and radius.", "Towers near the hero gain bonus XP."};
 
+            bool isLevelUp = (game.state == GS_LEVEL_UP_HERO);
             for (int i = 0; i < NUM_HERO_SKILLS; i++) {
                 Rectangle btnBounds = {panel.x + 20, startY + i * (buttonHeight + spacing), panel.width - 40, buttonHeight};
                 char skillLabel[128];
                 snprintf(skillLabel, sizeof(skillLabel), "%s (Level %d)", skillNames[i], game.hero.skills[i]);
-                if (GuiButton(btnBounds, skillLabel, false, true)) {
-                    if (game.hero.skillPoints > 0) {
-                        game.hero.skills[i]++;
-                        game.hero.skillPoints--;
-                        ApplyHeroSkills();
-                    }
+                // Record the click; actual mutation happens in UpdateHeroLevelUp
+                bool enabled = isLevelUp;
+                if (GuiButton(btnBounds, skillLabel, false, enabled)) {
+                    pendingHeroSkill = i;
                 }
                 SetTooltip(skillNames[i], skillDescs[i], btnBounds);
             }
@@ -181,7 +192,7 @@ void DrawTowers() {
             if (target) {
                 Vector2 dir = Vector2Subtract(target->position, t->position);
                 float angleToTarget = atan2f(dir.y, dir.x) * RAD2DEG;
-                float angleDiff = fabsf(fmodf(t->rotation - angleToTarget + 180.0f, 360.0f) - 180.0f);
+                float angleDiff = GetAngleDifference(t->rotation, angleToTarget);
                 if (angleDiff <= GetAimToleranceDegrees(t->type)) {
                     float beamWidth = (t->type == TOWER_CRYO) ? 3.0f : 5.0f;
                     DrawLineEx(t->position, target->position, beamWidth, Fade(turretColor, 0.9f));

@@ -65,6 +65,13 @@ void ResetGame(void) {
     game.dayNightCycle = 0.0f;
     game.screenShakeDuration = 0.0f;
     game.screenShakeTime = 0.0f;
+    game.screenShakeIntensity = 0.0f;
+    game.enemiesToSpawn = 0;
+    game.spawnTimer = 0.0f;
+    game.tooltip.visible = false;
+    game.tooltip.title = NULL;
+    game.tooltip.description = NULL;
+    game.environmentColor = WHITE;
 
     // Free-list initialization
     game.nextFreeProjectile = 0;
@@ -152,5 +159,5 @@ void BuildStaticMapRT(void) {
         }
     }
     EndTextureMode();
-    game.mapRTBuilt = true;
+    game.mapRTBuilt = IsRenderTextureReady(game.mapRT);
 }
