@@ -1670,19 +1670,18 @@ void DrawEnemies() {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];
 
-        // Base color by type
-        Color baseColor;
+        // Base size by type
         float size;
         switch (e->type) {
-            case ENEMY_BASIC: baseColor = MAROON; size = 12.0f; break;
-            case ENEMY_FAST: baseColor = ORANGE; size = 10.0f; break;
-            case ENEMY_TANK: baseColor = DARKBROWN; size = 18.0f; break;
-            case ENEMY_ETHEREAL: baseColor = Fade(COLOR_ENERGY, 0.8f); size = 14.0f; break;
-            case ENEMY_HEALER: baseColor = LIME; size = 15.0f; break;
-            case ENEMY_SPAWNER: baseColor = PURPLE; size = 20.0f; break;
-            case ENEMY_MINION: baseColor = DARKGRAY; size = 8.0f; break;
-            case ENEMY_BOSS: baseColor = RED; size = 28.0f; break;
-            default: baseColor = GRAY; size = 10.0f;
+            case ENEMY_BASIC: size = 12.0f; break;
+            case ENEMY_FAST: size = 10.0f; break;
+            case ENEMY_TANK: size = 18.0f; break;
+            case ENEMY_ETHEREAL: size = 14.0f; break;
+            case ENEMY_HEALER: size = 15.0f; break;
+            case ENEMY_SPAWNER: size = 20.0f; break;
+            case ENEMY_MINION: size = 8.0f; break;
+            case ENEMY_BOSS: size = 28.0f; break;
+            default: size = 10.0f;
         }
 
         // Apply visual state (computed in ProcessStatusEffects)
@@ -2319,7 +2318,7 @@ void ProcessStatusEffects(Enemy* enemy, float dt) {
                 break;
             case STATUS_SLOW:
             case STATUS_BRITTLE:
-                enemy->visualTint = ColorAlphaBlend(enemy->visualTint, COLOR_CRYO, 0.5f);
+                enemy->visualTint = ColorAlphaBlend(enemy->visualTint, COLOR_CRYO, Fade(WHITE, 0.5f));
                 break;
             case STATUS_WEAKEN:
                 enemy->visualHasOutline = true;
