@@ -43,9 +43,8 @@ void GetEnemiesInRadius(Vector2 center, float radius, int* outIndices, int* outC
 }
 
 void UpdateEnemies(float dt) {
-    // Grid is rebuilt once per frame in UpdateTowers; but we also need it for enemies themselves.
-    RebuildEnemyGrid(); // safe to call multiple times; but we call it once at start of UpdateTowers. To avoid double rebuild, we call here and let towers use it too (they rebuild anyway). Let's centralize: call in UpdatePlaying before both.
-
+    // Enemy positions are unchanged since UpdateTowers rebuilt the grid at the start of this
+    // frame, so we reuse that grid instead of rebuilding it a second time.
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];

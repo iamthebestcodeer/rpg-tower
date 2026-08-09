@@ -9,6 +9,7 @@ GameData game = {0};
 int main(void) {
     SetConfigFlags(FLAG_MSAA_4X_HINT);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Aetherium Vanguard - OPTIMIZED");
+    SetTargetFPS(60); // Cap the render loop; without it raylib spins at max FPS and pegs a CPU core
     SetRandomSeed((unsigned int)time(NULL));
 
     InitGame();
