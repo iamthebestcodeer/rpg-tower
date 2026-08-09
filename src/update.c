@@ -5,8 +5,14 @@
 //----------------------------------------------------------------------------------
 
 void UpdateGame(float dt) {
-    UpdateEnvironment(dt);
-    UpdateVFX(dt);
+    // Only run simulation work in states where the world is live. Skipping it
+    // in TITLE (nothing to animate) and PAUSED (the world is frozen, so
+    // particles/floating text/day-night shouldn't keep costing CPU or drifting
+    // mid-air) cuts idle resource use and makes pause actually freeze the scene.
+    if (game.state == GS_PLAYING || game.state == GS_LEVEL_UP_HERO || game.state == GS_GAME_OVER) {
+        UpdateEnvironment(dt);
+        UpdateVFX(dt);
+    }
     game.tooltip.visible = false;
 
     switch (game.state) {

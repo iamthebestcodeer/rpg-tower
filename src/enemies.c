@@ -43,7 +43,10 @@ void GetEnemiesInRadius(Vector2 center, float radius, int* outIndices, int* outC
 }
 
 void UpdateEnemies(float dt) {
-
+    // The grid is intentionally NOT rebuilt here. It is rebuilt at the start of
+    // UpdateTowers (before any movement this frame) for tower queries, and again
+    // at the start of UpdateProjectiles so impact AoE sees post-movement
+    // positions. A rebuild here would be wasted work: positions change below.
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];
