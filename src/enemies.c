@@ -113,6 +113,27 @@ void UpdateEnemies(float dt) {
     }
 }
 
+// Remove every grid entry for an enemy index. SpawnEnemy reuses the first free
+// slot, which may have been freed earlier this frame (e.g. a spawner dying after
+// the frame-start rebuild); without this purge, the previous occupant's stale
+// entry stays in the grid and a radius query spanning both cells returns the
+// enemy twice.
+static void RemoveEnemyFromGrid(int index) {
+    for (int y = 0; y < GRID_ROWS; y++) {
+        for (int x = 0; x < GRID_COLS; x++) {
+            GridCell* cell = &game.enemyGrid[y][x];
+            for (int k = 0; k < cell->count; ) {
+                if (cell->indices[k] == index) {
+                    cell->indices[k] = cell->indices[cell->count - 1];
+                    cell->count--;
+                } else {
+                    k++;
+                }
+            }
+        }
+    }
+}
+
 void SpawnEnemy(EnemyType type, Vector2 position) {
     int index = -1;
     for (int i = 0; i < MAX_ENEMIES; i++) {
@@ -231,6 +252,9 @@ void SpawnEnemy(EnemyType type, Vector2 position) {
 
     // Insert immediately into spatial grid so same-frame queries (tower targeting /
     // AoE) can find the new enemy even when the grid was rebuilt at frame start.
+    // If this slot was reused from an enemy that died this frame, purge its stale
+    // grid entry first, or a radius query spanning both cells reports it twice.
+    RemoveEnemyFromGrid(index);
     {
         int cx = (int)(e->position.x / TILE_SIZE);
         int cy = (int)(e->position.y / TILE_SIZE);
