@@ -68,6 +68,22 @@ intermediate `.o` files).
 | `vfx.c` | VFX updating/drawing, particles, floating text, screen shake |
 | `utils.c` | Geometry, lookup, tower metadata, colors, costs, angle interpolation |
 
+## Performance notes
+
+- **Frame cap:** `SetTargetFPS(60)` prevents the render loop from spinning
+  unthrottled (which would peg a CPU core).
+- **No MSAA:** the `FLAG_MSAA_4X_HINT` flag was removed - it multisampled the
+  whole framebuffer at 4x on every frame for little visible gain on flat-color
+  shapes. Re-enable it in `main()` if you prefer smoother edges.
+- **Idle updates skipped:** `UpdateEnvironment`/`UpdateVFX` only run in live
+  states (`GS_PLAYING`, `GS_LEVEL_UP_HERO`, `GS_GAME_OVER`), so the title
+  screen does no wasted work and pause genuinely freezes particles/floaties.
+- **Deterministic draw path:** Tesla sparkles are time-based instead of calling
+  `GetRandomValue` per tower per frame.
+- **Spatial grid:** enemy queries (tower targeting, AoE, hero attacks) go
+  through the spatial grid, rebuilt before tower queries and again before
+  projectile impacts (enemy movement invalidates cell membership mid-frame).
+
 ## Scope
 
 This restructuring preserves the original global-state design and gameplay

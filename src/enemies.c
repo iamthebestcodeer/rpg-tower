@@ -43,9 +43,10 @@ void GetEnemiesInRadius(Vector2 center, float radius, int* outIndices, int* outC
 }
 
 void UpdateEnemies(float dt) {
-    // Grid is rebuilt once per frame in UpdateTowers; but we also need it for enemies themselves.
-    RebuildEnemyGrid(); // safe to call multiple times; but we call it once at start of UpdateTowers. To avoid double rebuild, we call here and let towers use it too (they rebuild anyway). Let's centralize: call in UpdatePlaying before both.
-
+    // The grid is intentionally NOT rebuilt here. It is rebuilt at the start of
+    // UpdateTowers (before any movement this frame) for tower queries, and again
+    // at the start of UpdateProjectiles so impact AoE sees post-movement
+    // positions. A rebuild here would be wasted work: positions change below.
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];

@@ -7,8 +7,13 @@ GameData game = {0};
 //----------------------------------------------------------------------------------
 
 int main(void) {
-    SetConfigFlags(FLAG_MSAA_4X_HINT);
+    // Resource note: MSAA 4x was the single biggest GPU cost in this game - it
+    // multisamples the whole 1280x800 framebuffer at 4x fill on every frame at
+    // composite time, for little visible gain on flat-color shapes. Re-enable
+    // with SetConfigFlags(FLAG_MSAA_4X_HINT) before InitWindow() if smoother
+    // edges are preferred over lower GPU usage.
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Aetherium Vanguard - OPTIMIZED");
+    SetTargetFPS(60); // Cap the render loop; without it raylib spins at max FPS and pegs a CPU core
     SetRandomSeed((unsigned int)time(NULL));
 
     InitGame();
@@ -65,6 +70,10 @@ void ResetGame(void) {
     game.dayNightCycle = 0.0f;
     game.screenShakeDuration = 0.0f;
     game.screenShakeTime = 0.0f;
+    // Match what the first UpdateEnvironment computes at dayNightCycle = 0 (full
+    // daylight), so the first gameplay draw after starting/restarting isn't black
+    // because UpdateEnvironment is skipped while the state is GS_TITLE.
+    game.environmentColor = WHITE;
 
     // Free-list initialization
     game.nextFreeProjectile = 0;
