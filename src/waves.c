@@ -22,12 +22,14 @@ void ManageWaves(float dt) {
                 EnemyType type = ENEMY_BASIC;
                 int randVal = GetRandomValue(0, 100);
                 if (game.currentWave >= 2 && randVal < 30) type = ENEMY_FAST;
-                if (game.currentWave >= 4 && randVal >= 70 && randVal < 85) type = ENEMY_TANK;
-                if (game.currentWave >= 6 && randVal >= 50 && randVal < 65) type = ENEMY_ETHEREAL;
-                if (game.currentWave >= 8 && randVal >= 85 && randVal < 95) type = ENEMY_HEALER;
-                if (game.currentWave >= 10 && randVal >= 40 && randVal < 50) type = ENEMY_SPAWNER;
-                if (game.currentWave % 5 == 0 && game.enemiesToSpawn % 10 == 0)
+                else if (game.currentWave >= 4 && randVal >= 70 && randVal < 85) type = ENEMY_TANK;
+                else if (game.currentWave >= 6 && randVal >= 50 && randVal < 65) type = ENEMY_ETHEREAL;
+                else if (game.currentWave >= 8 && randVal >= 85 && randVal < 95) type = ENEMY_HEALER;
+                else if (game.currentWave >= 10 && randVal >= 40 && randVal < 50) type = ENEMY_SPAWNER;
+                if (game.currentWave % 5 == 0 && game.enemiesToSpawn % 10 == 0) {
                     SpawnEnemy(ENEMY_SPAWNER, game.map.waypoints[0]);
+                    game.enemiesToSpawn--;
+                }
                 if (game.currentWave % 10 == 0 && game.enemiesToSpawn == 1) {
                     type = ENEMY_BOSS;
                     ScreenShake(10.0f, 1.0f);

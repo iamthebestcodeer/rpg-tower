@@ -46,9 +46,17 @@ int GetEnemyIndexById(int id) {
 }
 
 float LerpAngle(float start, float end, float amount) {
-    float difference = fmodf(end - start + 360.0f, 360.0f);
+    float difference = fmodf(end - start, 360.0f);
+    if (difference < 0.0f) difference += 360.0f;
     if (difference > 180.0f) difference -= 360.0f;
     return start + difference * amount;
+}
+
+float GetAngleDifference(float a, float b) {
+    float d = fmodf(a - b, 360.0f);
+    if (d < 0.0f) d += 360.0f;
+    if (d > 180.0f) d -= 360.0f;
+    return fabsf(d);
 }
 
 int GetTowerCost(TowerType type) {

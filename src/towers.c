@@ -5,8 +5,6 @@
 //----------------------------------------------------------------------------------
 
 void UpdateTowers(float dt) {
-    // Rebuild grid once per frame for all queries
-    RebuildEnemyGrid();
 
     for (int i = 0; i < MAX_TOWERS; i++) {
         if (!game.towers[i].active) continue;
@@ -133,7 +131,7 @@ void UpdateTowers(float dt) {
             float rotAlpha = fminf(rotationSpeed * dt, 1.0f);
             t->rotation = LerpAngle(t->rotation, t->desiredRotation, rotAlpha);
 
-            float angleDiff = fabsf(fmodf(t->rotation - t->desiredRotation + 180.0f, 360.0f) - 180.0f);
+            float angleDiff = GetAngleDifference(t->rotation, t->desiredRotation);
             float aimTolerance = GetAimToleranceDegrees(t->type);
 
             if (t->cooldownTimer <= 0 && (angleDiff <= aimTolerance || hasGlobalRange)) {
@@ -143,6 +141,7 @@ void UpdateTowers(float dt) {
                         ApplyStatusEffect(target, STATUS_BRITTLE, dt * 1.5f, 1.15f);
                     } else {
                         ApplyStatusEffect(target, STATUS_STUN, t->stats.fireRate, 1.0f);
+                        t->cooldownTimer = (t->stats.fireRate > 0) ? (1.0f / t->stats.fireRate) : 1.0f;
                     }
                     float damage = t->stats.damage * dt;
                     float actualDamage = CalculateDamage(damage, t->damageType, target);

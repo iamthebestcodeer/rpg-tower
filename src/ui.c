@@ -4,7 +4,7 @@
 // UI
 //----------------------------------------------------------------------------------
 
-void DrawUI(void) {
+void DrawUI(bool interactive) {
     Vector2 mousePosScreen = GetMousePosition();
     Vector2 mousePosWorld = GetScreenToWorld2D(mousePosScreen, game.camera);
 
@@ -70,9 +70,9 @@ void DrawUI(void) {
     DrawLine(GAME_AREA_WIDTH, 260, SCREEN_WIDTH, 260, COLOR_UI_ACCENT);
 
     if (game.selectedTowerIndex != -1)
-        DrawTowerInspector();
+        DrawTowerInspector(interactive);
     else
-        DrawBuildMenu();
+        DrawBuildMenu(interactive);
 }
 
 void DrawHeroStatus() {
@@ -109,7 +109,7 @@ void DrawHeroStatus() {
     SetTooltip("Aether Burst (E)", "AoE damage and energy weakness debuff.", cdBarE);
 }
 
-void DrawBuildMenu() {
+void DrawBuildMenu(bool interactive) {
     DrawText("BUILD MENU (1-4)", GAME_AREA_WIDTH + 10, 270, 20, COLOR_ENERGY);
     int startY = 300, buttonHeight = 65, spacing = 15;
     TowerType types[] = {TOWER_PULSE, TOWER_CANNON, TOWER_CRYO, TOWER_TESLA};
@@ -122,19 +122,20 @@ void DrawBuildMenu() {
         const char* name = GetTowerName(types[i]);
         const char* desc = GetTowerDescription(types[i]);
         char label[128]; snprintf(label, sizeof(label), "%s (%dG)", name, cost);
-        if (GuiButton(btnBounds, label, selected, canAfford)) {
-            if (canAfford) {
-                game.placingTower = types[i];
-                game.selectedTowerIndex = -1;
-            } else {
-                AddFloatingText((Vector2){GAME_AREA_WIDTH + 50, btnBounds.y}, "Not enough Gold!", COLOR_DANGER, false);
-            }
+        bool hovered = CheckCollisionPointRec(GetMousePosition(), btnBounds);
+        bool clickedAffordable = GuiButton(btnBounds, label, selected, canAfford && interactive);
+        if (interactive && hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !canAfford) {
+            AddFloatingText((Vector2){GAME_AREA_WIDTH + 50, btnBounds.y}, "Not enough Gold!", COLOR_DANGER, false);
+        }
+        if (clickedAffordable) {
+            game.placingTower = types[i];
+            game.selectedTowerIndex = -1;
         }
         SetTooltip(name, desc, btnBounds);
     }
 }
 
-void DrawTowerInspector() {
+void DrawTowerInspector(bool interactive) {
     if (game.selectedTowerIndex == -1 || !game.towers[game.selectedTowerIndex].active) {
         game.selectedTowerIndex = -1;
         return;
@@ -213,7 +214,7 @@ void DrawTowerInspector() {
             case TARGET_STRONGEST: modeText = "Strongest (HP)"; break;
             case TARGET_WEAKEST: modeText = "Weakest (HP)"; break;
         }
-        if (GuiButton(btnTarget, modeText, false, true)) {
+        if (GuiButton(btnTarget, modeText, false, interactive)) {
             t->targetingMode = (t->targetingMode + 1) % NUM_TARGETING_MODES;
         }
         SetTooltip("Targeting Mode", "Change how the tower prioritizes enemies.", btnTarget);
@@ -221,19 +222,19 @@ void DrawTowerInspector() {
     }
 
     if (t->stats.level >= TOWER_BASE_MAX_LEVEL && t->type >= TOWER_PULSE && t->type <= TOWER_TESLA) {
-        DrawTowerUpgradePaths(t);
+        DrawTowerUpgradePaths(t, interactive);
     }
 
     Rectangle btnSell = {GAME_AREA_WIDTH + 10, SCREEN_HEIGHT - 50, UI_WIDTH - 20, 40};
     int sellValue = (int)(t->totalCost * 0.6f);
     char sellLabel[64]; snprintf(sellLabel, sizeof(sellLabel), "Sell Tower (%dG)", sellValue);
-    if (GuiButton(btnSell, sellLabel, false, true)) {
+    if (GuiButton(btnSell, sellLabel, false, interactive)) {
         SellTower(game.selectedTowerIndex);
     }
     SetTooltip("Sell", "Sell the tower for a partial refund.", btnSell);
 }
 
-void DrawTowerUpgradePaths(Tower* t) {
+void DrawTowerUpgradePaths(Tower* t, bool interactive) {
     DrawText("T4 UPGRADE PATHS (Requires Aether)", GAME_AREA_WIDTH + 10, 600, 20, COLOR_AETHER_RES);
 
     TowerType path1 = TOWER_NONE, path2 = TOWER_NONE;
@@ -256,36 +257,49 @@ void DrawTowerUpgradePaths(Tower* t) {
         const char* name = GetTowerName(paths[i]);
         const char* desc = GetTowerDescription(paths[i]);
         char upLabel[128]; snprintf(upLabel, sizeof(upLabel), "%s (%dG, %dA)", name, costGold, costAether);
-        if (GuiButton(btnBounds, upLabel, false, canAfford)) {
-            if (canAfford) {
+        bool enabled = interactive && canAfford;
+        if (GuiButton(btnBounds, upLabel, false, enabled)) {
+            if (UpgradeTower(t, paths[i])) {
                 game.gold -= costGold;
                 game.aether -= costAether;
-                if (UpgradeTower(t, paths[i])) {
-                    t->totalCost += costGold;
-                    AddFloatingText(t->position, "UPGRADED!", COLOR_AETHER_RES, true);
-                    ScreenShake(3.0f, 0.3f);
-                }
-            } else {
-                AddFloatingText((Vector2){GAME_AREA_WIDTH + 50, btnBounds.y}, "Cannot Afford!", COLOR_DANGER, false);
+                t->totalCost += costGold;
+                AddFloatingText(t->position, "UPGRADED!", COLOR_AETHER_RES, true);
+                ScreenShake(3.0f, 0.3f);
             }
+        } else if (interactive && CheckCollisionPointRec(GetMousePosition(), btnBounds)
+                   && IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !canAfford) {
+            AddFloatingText((Vector2){GAME_AREA_WIDTH + 50, btnBounds.y}, "Cannot Afford!", COLOR_DANGER, false);
         }
         SetTooltip(name, desc, btnBounds);
     }
 }
 
-void DrawTooltip() {
+void DrawTooltip(void) {
     if (!game.tooltip.visible) return;
     Vector2 mousePos = GetMousePosition();
     int padding = 10, titleSize = 20, textSize = 16, maxWidth = 300;
 
-    int lines = 1;
-    for (const char* p = game.tooltip.description; *p; p++)
-        if (*p == '\n') lines++;
-    int textHeight = lines * (textSize + 5);
+    // Split description by newlines and measure widest segment
+    int longestLineWidth = 0;
+    int lineCount = 1;
+    const char *lineStart = game.tooltip.description;
+    for (const char* p = game.tooltip.description; ; p++) {
+        if (*p == '\n' || *p == '\0') {
+            int len = (int)(p - lineStart);
+            char tmp[512];
+            int cpy = len < (int)sizeof(tmp)-1 ? len : (int)sizeof(tmp)-1;
+            memcpy(tmp, lineStart, cpy); tmp[cpy] = '\0';
+            int w = MeasureText(tmp, textSize);
+            if (w > longestLineWidth) longestLineWidth = w;
+            lineCount += (*p == '\n') ? 1 : 0;
+            if (*p == '\0') break;
+            lineStart = p + 1;
+        }
+    }
+    int textHeight = lineCount * (textSize + 5);
     int titleHeight = titleSize + 5;
     int width = MeasureText(game.tooltip.title, titleSize);
-    int descWidth = MeasureText(game.tooltip.description, textSize);
-    if (descWidth > width) width = descWidth;
+    if (longestLineWidth > width) width = longestLineWidth;
     if (width > maxWidth) width = maxWidth;
 
     Rectangle tooltipRect = {
@@ -304,13 +318,27 @@ void DrawTooltip() {
     DrawText(game.tooltip.title, tooltipRect.x + padding, tooltipRect.y + padding, titleSize, COLOR_ENERGY);
     DrawLine(tooltipRect.x + padding, tooltipRect.y + padding + titleHeight + 5,
              tooltipRect.x + width + padding, tooltipRect.y + padding + titleHeight + 5, COLOR_UI_ACCENT);
-    DrawText(game.tooltip.description, tooltipRect.x + padding, tooltipRect.y + padding * 2 + titleHeight, textSize, COLOR_TEXT_PRIMARY);
+    // Draw each line separately so long/wrapped text stays inside the box
+    float ty = tooltipRect.y + padding * 2 + titleHeight;
+    lineStart = game.tooltip.description;
+    for (const char* p = game.tooltip.description; ; p++) {
+        if (*p == '\n' || *p == '\0') {
+            int len = (int)(p - lineStart);
+            char tmp[512];
+            int cpy = len < (int)sizeof(tmp)-1 ? len : (int)sizeof(tmp)-1;
+            memcpy(tmp, lineStart, cpy); tmp[cpy] = '\0';
+            DrawText(tmp, tooltipRect.x + padding, (int)ty, textSize, COLOR_TEXT_PRIMARY);
+            ty += textSize + 5;
+            if (*p == '\0') break;
+            lineStart = p + 1;
+        }
+    }
 }
 
 bool GuiButton(Rectangle bounds, const char* text, bool selected, bool enabled) {
     Vector2 mousePos = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mousePos, bounds);
-    bool clicked = false;
+    bool clicked = hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 
     Color bgColor = COLOR_UI_ACCENT;
     Color textColor = COLOR_TEXT_PRIMARY;
@@ -319,6 +347,8 @@ bool GuiButton(Rectangle bounds, const char* text, bool selected, bool enabled) 
     if (!enabled) {
         bgColor = ColorBrightness(COLOR_UI_ACCENT, -0.4f);
         textColor = COLOR_TEXT_MUTED;
+        // Still detect hover for border feedback even when disabled
+        if (hovered) borderColor = YELLOW;
     } else if (selected) {
         bgColor = COLOR_ENERGY;
         textColor = BLACK;
@@ -326,8 +356,6 @@ bool GuiButton(Rectangle bounds, const char* text, bool selected, bool enabled) 
     } else if (hovered) {
         bgColor = ColorBrightness(COLOR_UI_ACCENT, 0.2f);
         borderColor = YELLOW;
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-            clicked = true;
     }
 
     DrawRectangleRounded(bounds, 0.1f, 8, bgColor);

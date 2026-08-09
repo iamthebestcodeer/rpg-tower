@@ -42,8 +42,8 @@
 #define TOWER_BASE_MAX_LEVEL 3
 
 // Spatial Grid
-#define GRID_COLS 24
-#define GRID_ROWS 20
+#define GRID_COLS MAP_WIDTH
+#define GRID_ROWS MAP_HEIGHT
 #define MAX_ENEMIES_PER_CELL 32
 
 // Aesthetics
@@ -404,11 +404,11 @@ void DrawEnemies(void);
 void DrawHero(void);
 void DrawProjectiles(void);
 
-void DrawUI(void);
+void DrawUI(bool interactive);
 void DrawHeroStatus(void);
-void DrawBuildMenu(void);
-void DrawTowerInspector(void);
-void DrawTowerUpgradePaths(Tower* t);
+void DrawBuildMenu(bool interactive);
+void DrawTowerInspector(bool interactive);
+void DrawTowerUpgradePaths(Tower* t, bool interactive);
 void DrawTooltip(void);
 void SetTooltip(const char* title, const char* description, Rectangle bounds);
 
@@ -425,7 +425,11 @@ void UpdateVFX(float dt);
 void DrawVFX(void);
 void SpawnParticles(Vector2 position, int count, Color startColor, Color endColor, float speed, float sizeStart, float sizeEnd, bool gravity);
 void AddFloatingText(Vector2 position, const char* text, Color color, bool critical);
-void AddFloatingTextFmt(Vector2 position, Color color, bool critical, const char* fmt, ...);
+void AddFloatingTextFmt(Vector2 position, Color color, bool critical, const char* fmt, ...)
+#if defined(__GNUC__)
+    __attribute__((format(printf, 4, 5)))
+#endif
+;
 void ScreenShake(float intensity, float duration);
 
 Vector2 WorldToTile(Vector2 worldPos);
@@ -443,5 +447,6 @@ float LerpAngle(float start, float end, float amount);
 float GetAimToleranceDegrees(TowerType type);
 
 bool GuiButton(Rectangle bounds, const char* text, bool selected, bool enabled);
+float GetAngleDifference(float a, float b);
 
 #endif // GAME_H

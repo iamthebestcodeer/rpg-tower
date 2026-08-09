@@ -54,6 +54,7 @@ void UpdatePlaying(float dt) {
 
     HandleInput();
     ManageWaves(dt);
+    RebuildEnemyGrid();
     UpdateHero(dt);
     UpdateTowers(dt);
     UpdateEnemies(dt);
@@ -92,8 +93,11 @@ void UpdateEnvironment(float dt) {
     }
 }
 
+void ConsumePendingHeroSkill(void);
+
 void UpdateHeroLevelUp(float dt) {
     (void)dt;
+    ConsumePendingHeroSkill();
     if (game.hero.skillPoints == 0)
         game.state = GS_PLAYING;
 }
