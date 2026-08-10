@@ -1,33 +1,257 @@
 #include "game.h"
+#include "rlgl.h"
+#include <time.h>
 
 GameData game = {0};
+
+// High-resolution monotonic clock for the benchmark (raylib's GetTime() proved
+// unreliable for fine-grained per-phase attribution on this build).
+double NowMs(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec * 1e-6;
+}
+
+//----------------------------------------------------------------------------------
+// Benchmark harness (--bench [--frames N])
+//
+// Runs a heavy, deterministic battle scene with the FPS cap removed, measures
+// per-frame wall time over N frames (after a short warmup), prints a summary
+// to stdout and exits. No effect on normal gameplay. Used to verify
+// performance work with a stable, repeatable workload.
+//----------------------------------------------------------------------------------
+#define BENCH_DEFAULT_FRAMES 400
+#define BENCH_MAX_FRAMES     1000000 // ceiling on --frames: bounds the sample buffer and the run
+#define BENCH_WARMUP_FRAMES  30
+
+static bool g_benchMode = false;
+static bool g_benchReady = false;
+static int g_benchTotalFrames = BENCH_DEFAULT_FRAMES;
+static int g_benchFrame = 0;
+static double g_benchLastTime = 0.0;
+static double g_benchLastUpdateMs = 0.0;
+static double g_benchLastDrawMs = 0.0;
+static double g_benchLoopMs = 0.0; // loop iteration, timed externally with NowMs
+static double g_benchSumMs = 0.0;
+static double g_benchMinMs = 1e9;
+static double g_benchMaxMs = 0.0;
+static double* g_benchSamples = NULL; // per-frame times for median/percentiles
+static double g_benchUpdateMs = 0.0;
+static double g_benchDrawMs = 0.0;
+static long g_sumParticles = 0, g_sumEnemies = 0, g_sumProjectiles = 0, g_sumTexts = 0;
+
+// Parses the --frames argument into a frame count. Returns -1 when the value
+// is not a positive integer within [1, BENCH_MAX_FRAMES] so main() can print
+// the usage line and abort - an unchecked count would corrupt the sample
+// buffer (zero/negative indexing) or the reported statistics (divide by zero).
+static int ParseBenchFrames(const char* raw) {
+    char* end = NULL;
+    long count = strtol(raw, &end, 10);
+    if (end == raw || *end != '\0' || count <= 0 || count > BENCH_MAX_FRAMES)
+        return -1;
+    return (int)count;
+}
+
+static void PrintBenchUsage(const char* program) {
+    fprintf(stderr, "Usage: %s [--bench [--frames <positive integer>]]\n", program);
+}
+
+static void SetupBenchmarkScene(void) {
+    // Deterministic heavy scene: fill the map with towers, then drop a large
+    // mixed wave so towers fire, projectiles fly, particles and floating text
+    // churn at maximum pressure.
+    ResetGame();
+    game.state = GS_PLAYING;
+    game.lives = 100000;
+    game.gold = 99999;
+    game.hero.xpToNextLevel = 2000000000; // hero must not level mid-bench (state switch)
+
+    const TowerType cycle[4] = { TOWER_PULSE, TOWER_CANNON, TOWER_CRYO, TOWER_TESLA };
+    int placed = 0;
+    for (int y = 0; y < MAP_HEIGHT && placed < MAX_TOWERS; y++) {
+        for (int x = 0; x < MAP_WIDTH && placed < MAX_TOWERS; x++) {
+            if (IsTileBuildable(x, y) && PlaceTower(x, y, cycle[placed % 4]))
+                placed++;
+        }
+    }
+
+    game.waveActive = true;
+    game.currentWave = 25;
+    game.enemiesToSpawn = 0; // manual spawn below; no scheduled extras
+    const EnemyType mix[8] = { ENEMY_BASIC, ENEMY_BASIC, ENEMY_FAST, ENEMY_TANK,
+                               ENEMY_ETHEREAL, ENEMY_HEALER, ENEMY_SPAWNER, ENEMY_BOSS };
+    for (int i = 0; i < 200; i++)
+        SpawnEnemy(mix[i % 8], game.map.waypoints[0]);
+}
+
+static bool g_benchPixelsChecked = false;
+
+// Sanity probe: count non-background pixels plus particle-colored pixels in the
+// game area, so we can verify the world (and particles specifically) render.
+static void CheckRendering(void) {
+    int w = GAME_AREA_WIDTH, h = SCREEN_HEIGHT;
+    unsigned char* px = rlReadScreenPixels(w, h);
+    if (!px) { printf("CHECK_RENDER: read failed\n"); return; }
+    long nonBg = 0, red = 0, cyan = 0, gray = 0, yellow = 0;
+    for (int i = 0; i < w * h; i++) {
+        unsigned char* p = px + i * 4;
+        int r = p[0], g = p[1], b = p[2];
+        if (abs(r - 10) > 6 || abs(g - 10) > 6 || abs(b - 20) > 6)
+            nonBg++;
+        if (r > 190 && g < 80 && b < 80) red++;
+        if (b > 200 && g > 150 && r < 100) cyan++;
+        if (r > 140 && g > 140 && b > 140 && abs(r - g) < 25 && abs(g - b) < 25) gray++;
+        if (r > 200 && g > 170 && b < 90) yellow++;
+    }
+    printf("CHECK_RENDER: non_bg=%ld red=%ld cyan=%ld gray=%ld yellow=%ld\n", nonBg, red, cyan, gray, yellow);
+    free(px);
+    g_benchPixelsChecked = true;
+}
+
+static bool BenchmarkTick(void) {
+    if (!g_benchReady) {
+        g_benchReady = true;
+        g_benchLastTime = NowMs();
+        return false;
+    }
+    if (!g_benchPixelsChecked && g_benchFrame == 10)
+        CheckRendering();
+
+    double now = NowMs();
+    double ms = now - g_benchLastTime;
+    g_benchLastTime = now;
+    g_benchFrame++;
+
+    if (g_benchFrame > BENCH_WARMUP_FRAMES && g_benchFrame <= BENCH_WARMUP_FRAMES + g_benchTotalFrames) {
+        g_benchSumMs += ms;
+        if (ms < g_benchMinMs) g_benchMinMs = ms;
+        if (ms > g_benchMaxMs) g_benchMaxMs = ms;
+        g_benchSamples[g_benchFrame - BENCH_WARMUP_FRAMES - 1] = ms;
+    }
+
+    // Per-phase timing for profiling (always tracked, printed at the end)
+    g_benchUpdateMs += g_benchLastUpdateMs;
+    g_benchDrawMs += g_benchLastDrawMs;
+
+    if (g_benchFrame > BENCH_WARMUP_FRAMES) {
+        int pe = 0, en = 0, pr = 0, ft = 0;
+        for (int i = 0; i < MAX_PARTICLES; i++) if (game.particles[i].active) pe++;
+        for (int i = 0; i < MAX_ENEMIES; i++) if (game.enemies[i].active) en++;
+        for (int i = 0; i < MAX_PROJECTILES; i++) if (game.projectiles[i].active) pr++;
+        for (int i = 0; i < MAX_FLOATING_TEXT; i++) if (game.floatingTexts[i].active) ft++;
+        g_sumParticles += pe; g_sumEnemies += en; g_sumProjectiles += pr; g_sumTexts += ft;
+    }
+
+    if (g_benchFrame >= BENCH_WARMUP_FRAMES + g_benchTotalFrames) {
+        double avgMs = g_benchSumMs / g_benchTotalFrames;
+        // Median + P90 (robust against the machine's background noise spikes)
+        for (int i = 1; i < g_benchTotalFrames; i++) {
+            double key = g_benchSamples[i];
+            int j = i - 1;
+            while (j >= 0 && g_benchSamples[j] > key) { g_benchSamples[j + 1] = g_benchSamples[j]; j--; }
+            g_benchSamples[j + 1] = key;
+        }
+        double med = g_benchSamples[g_benchTotalFrames / 2];
+        double p90 = g_benchSamples[(int)(g_benchTotalFrames * 0.9)];
+        printf("\nBENCHMARK frames=%d avg=%.3fms (%.1f fps) med=%.3fms (%.1f fps) p90=%.3fms min=%.3fms max=%.3fms\n",
+               g_benchTotalFrames, avgMs, 1000.0 / avgMs, med, 1000.0 / med, p90, g_benchMinMs, g_benchMaxMs);
+        printf("BENCHMARK loop=%.3fms update=%.3fms draw=%.3fms (other=%.3fms)\n",
+               g_benchLoopMs / g_benchTotalFrames,
+               g_benchUpdateMs / g_benchTotalFrames, g_benchDrawMs / g_benchTotalFrames,
+               (g_benchLoopMs - g_benchUpdateMs - g_benchDrawMs) / g_benchTotalFrames);
+        printf("BENCHMARK load particles=%.0f enemies=%.0f projectiles=%.0f texts=%.0f\n",
+               (double)g_sumParticles / g_benchTotalFrames, (double)g_sumEnemies / g_benchTotalFrames,
+               (double)g_sumProjectiles / g_benchTotalFrames, (double)g_sumTexts / g_benchTotalFrames);
+        printf("BENCHMARK draw begin/clear=%.3f map=%.3f entities=%.3f vfx=%.3f ui=%.3f overlay=%.3f enddraw=%.3f | enemies=%.3f towers=%.3f hero+proj=%.3f\n",
+               g_drawTraceMs[0] / g_benchTotalFrames, g_drawTraceMs[1] / g_benchTotalFrames,
+               g_drawTraceMs[2] / g_benchTotalFrames, g_drawTraceMs[3] / g_benchTotalFrames,
+               g_drawTraceMs[4] / g_benchTotalFrames, g_drawTraceMs[5] / g_benchTotalFrames,
+               g_drawTraceMs[9] / g_benchTotalFrames,
+               g_drawTraceMs[6] / g_benchTotalFrames, g_drawTraceMs[7] / g_benchTotalFrames,
+               g_drawTraceMs[8] / g_benchTotalFrames);
+        fflush(stdout);
+        return true;
+    }
+    return false;
+}
+
+
 
 //----------------------------------------------------------------------------------
 // Main
 //----------------------------------------------------------------------------------
 
-int main(void) {
+int main(int argc, char* argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--bench") == 0) {
+            g_benchMode = true;
+        } else if (strcmp(argv[i], "--frames") == 0) {
+            if (i + 1 >= argc) {
+                PrintBenchUsage(argv[0]);
+                return 1;
+            }
+            int frames = ParseBenchFrames(argv[++i]);
+            if (frames < 0) {
+                PrintBenchUsage(argv[0]);
+                return 1;
+            }
+            g_benchTotalFrames = frames;
+        }
+    }
+
     // Resource note: MSAA 4x was the single biggest GPU cost in this game - it
     // multisamples the whole 1280x800 framebuffer at 4x fill on every frame at
     // composite time, for little visible gain on flat-color shapes. Re-enable
     // with SetConfigFlags(FLAG_MSAA_4X_HINT) before InitWindow() if smoother
     // edges are preferred over lower GPU usage.
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Aetherium Vanguard - OPTIMIZED");
-    SetTargetFPS(60); // Cap the render loop; without it raylib spins at max FPS and pegs a CPU core
-    SetRandomSeed((unsigned int)time(NULL));
+    if (g_benchMode) {
+        SetTargetFPS(0);             // uncapped so real frame time is measurable
+        SetRandomSeed(1234);         // deterministic bench
+    } else {
+        SetTargetFPS(60); // Cap the render loop; without it raylib spins at max FPS and pegs a CPU core
+        SetRandomSeed((unsigned int)time(NULL));
+    }
 
     InitGame();
+    if (g_benchMode) {
+        g_drawTrace = true;
+        SetupBenchmarkScene();
+        g_benchSamples = (double*)malloc((size_t)g_benchTotalFrames * sizeof(double));
+        if (!g_benchSamples) {
+            fprintf(stderr, "BENCHMARK: failed to allocate %d sample slots\n", g_benchTotalFrames);
+            CloseWindow();
+            return 1;
+        }
+    }
 
     while (!WindowShouldClose()) {
+        double iterStart = NowMs();
         float dt = GetFrameTime();
         if (dt > 0.1f) dt = 0.1f;
         game.globalTime += dt;
-        UpdateGame(dt);
-        DrawGame();
+
+        if (g_benchMode) {
+            dt = 1.0f / 60.0f; // fixed timestep for deterministic benchmark
+            double t0 = NowMs();
+            UpdateGame(dt);
+            double t1 = NowMs();
+            DrawGame();
+            double t2 = NowMs();
+            g_benchLastUpdateMs = t1 - t0;
+            g_benchLastDrawMs = t2 - t1;
+            if (BenchmarkTick()) break;
+            g_benchLoopMs += NowMs() - iterStart;
+        } else {
+            UpdateGame(dt);
+            DrawGame();
+        }
     }
 
     if (game.mapRTBuilt) UnloadRenderTexture(game.mapRT);
+    UnloadVFX();
     CloseWindow();
+    if (g_benchSamples) free(g_benchSamples);
     return 0;
 }
 
@@ -46,6 +270,7 @@ void InitGame(void) {
     game.camera.zoom = 1.0f;
 
     BuildStaticMapRT();
+    InitVFX();
 }
 
 void ResetGame(void) {

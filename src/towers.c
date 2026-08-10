@@ -206,7 +206,7 @@ bool PlaceTower(int x, int y, TowerType type) {
     t->targetingMode = TARGET_FIRST;
     t->totalCost = cost;
     ConfigureTowerStats(t);
-    SpawnParticles(t->position, 40, COLOR_ENERGY, Fade(COLOR_ENERGY, 0.0f), 80.0f, 8.0f, 2.0f, false);
+    SpawnParticles(t->position, 25, COLOR_ENERGY, Fade(COLOR_ENERGY, 0.0f), 80.0f, 8.0f, 2.0f, false);
     return true;
 }
 
@@ -222,7 +222,7 @@ void SellTower(int towerIndex) {
         game.occupied[ty][tx] = false;
 
     AddFloatingTextFmt(t->position, COLOR_GOLD, false, "SOLD +%dG", sellValue);
-    SpawnParticles(t->position, 30, GRAY, Fade(GRAY, 0.0f), 80.0f, 8.0f, 2.0f, true);
+    SpawnParticles(t->position, 20, GRAY, Fade(GRAY, 0.0f), 80.0f, 8.0f, 2.0f, true);
     t->active = false;
     game.selectedTowerIndex = -1;
 }
@@ -240,7 +240,7 @@ bool UpgradeTower(Tower* t, TowerType newType) {
     if (valid) {
         t->type = newType;
         ConfigureTowerStats(t);
-        SpawnParticles(t->position, 100, COLOR_AETHER_RES, Fade(YELLOW, 0.0f), 150.0f, 10.0f, 3.0f, false);
+        SpawnParticles(t->position, 60, COLOR_AETHER_RES, Fade(YELLOW, 0.0f), 150.0f, 10.0f, 3.0f, false);
         return true;
     }
     return false;
@@ -310,5 +310,5 @@ void LevelUpTower(int towerIndex) {
     t->stats.level++;
     ConfigureTowerStats(t);
     AddFloatingText(t->position, "LEVEL UP!", YELLOW, true);
-    SpawnParticles(t->position, 60, YELLOW, Fade(YELLOW, 0.0f), 120.0f, 10.0f, 3.0f, false);
+    SpawnParticles(t->position, 40, YELLOW, Fade(YELLOW, 0.0f), 120.0f, 10.0f, 3.0f, false);
 }

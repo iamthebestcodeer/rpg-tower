@@ -151,13 +151,13 @@ void UpdateProjectiles(float dt) {
 
 void HandleProjectileImpact(Projectile* p, Enemy* primaryTarget) {
     Color particleColor = GetTowerColor(p->sourceType);
-    int particleCount = 15;
+    int particleCount = 10;
     float particleSpeed = 60.0f;
     float particleSize = 5.0f;
     bool gravity = (p->damageType == DMG_PHYSICAL);
 
     if (p->aoeRadius > 0) {
-        particleCount = 60;
+        particleCount = 40;
         particleSpeed = 150.0f;
         particleSize = 9.0f;
         ScreenShake(p->aoeRadius * 0.05f, 0.25f);

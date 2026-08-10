@@ -53,7 +53,7 @@ void UpdateHero(float dt) {
                 h->dashDirection = h->lastMovementDirection;
             moveVector = h->dashDirection;
             currentSpeed *= 4.5f;
-            SpawnParticles(h->position, 30, COLOR_AETHER_RES, Fade(COLOR_AETHER_RES, 0.0f), 80.0f, 8.0f, 2.0f, false);
+            SpawnParticles(h->position, 20, COLOR_AETHER_RES, Fade(COLOR_AETHER_RES, 0.0f), 80.0f, 8.0f, 2.0f, false);
         }
     }
 
@@ -73,8 +73,8 @@ void UpdateHero(float dt) {
     if (IsKeyPressed(KEY_E) && h->currentBurstCooldown <= 0) {
         AddFloatingText(h->position, "AETHER BURST!", COLOR_ENERGY, true);
         ScreenShake(5.0f, 0.3f);
-        SpawnParticles(h->position, 200, COLOR_ENERGY, Fade(WHITE, 0.5f), 150.0f, 10.0f, 2.0f, false);
-        SpawnParticles(h->position, 50, COLOR_AETHER_RES, Fade(COLOR_AETHER_RES, 0.0f), 50.0f, 15.0f, 5.0f, false);
+        SpawnParticles(h->position, 120, COLOR_ENERGY, Fade(WHITE, 0.5f), 150.0f, 10.0f, 2.0f, false);
+        SpawnParticles(h->position, 30, COLOR_AETHER_RES, Fade(COLOR_AETHER_RES, 0.0f), 50.0f, 15.0f, 5.0f, false);
 
         // Use spatial grid for burst AoE
         int nearby[MAX_ENEMIES];
@@ -105,7 +105,7 @@ void HeroAttack(void) {
         float actualDamage = CalculateDamage((float)h->attackDamage, DMG_PHYSICAL, e);
         e->hp -= actualDamage;
         AddFloatingTextFmt(e->position, COLOR_AETHER_RES, false, "%.0f", actualDamage);
-        SpawnParticles(e->position, 8, COLOR_AETHER_RES, Fade(WHITE, 0.0f), 100.0f, 5.0f, 1.0f, false);
+        SpawnParticles(e->position, 6, COLOR_AETHER_RES, Fade(WHITE, 0.0f), 100.0f, 5.0f, 1.0f, false);
         if (e->hp <= 0)
             HandleEnemyDeath(nearby[i], -2);
     }
@@ -126,5 +126,5 @@ void LevelUpHero(void) {
     h->skillPoints++;
     ApplyHeroSkills();
     AddFloatingText(h->position, "HERO LEVEL UP!", COLOR_AETHER_RES, true);
-    SpawnParticles(h->position, 70, COLOR_AETHER_RES, Fade(COLOR_AETHER_RES, 0.0f), 140.0f, 12.0f, 4.0f, false);
+    SpawnParticles(h->position, 45, COLOR_AETHER_RES, Fade(COLOR_AETHER_RES, 0.0f), 140.0f, 12.0f, 4.0f, false);
 }
