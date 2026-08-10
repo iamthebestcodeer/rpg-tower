@@ -242,7 +242,8 @@ void DrawRectangleLinesEx(Rectangle rec, float lineThick, Color color) {
 }
 
 void DrawRectangleRounded(Rectangle rec, float roundness, int segments, Color color) {
-    (void)rec; (void)roundness; (void)segments; (void)color;
+    (void)roundness; (void)segments;
+    StubLogDraw(STUB_DRAW_ROUNDED_RECT, rec.x, rec.y, rec.width, rec.height, color);
 }
 
 void DrawRectangleRoundedLinesEx(Rectangle rec, float roundness, int segments,

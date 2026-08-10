@@ -14,6 +14,11 @@
 #define BUTTON_GAP   10
 #define SECTION_GAP  10
 
+// Build menu
+#define BUILD_MENU_START_Y        300
+#define BUILD_MENU_BUTTON_HEIGHT  65
+#define BUILD_MENU_BUTTON_SPACING 15
+
 // Tower inspector
 #define SECTION_HEADER_Y   270
 #define INSPECTOR_TITLE_Y  300
@@ -136,11 +141,12 @@ void DrawHeroStatus() {
 
 void DrawBuildMenu(bool interactive) {
     DrawText("BUILD MENU (1-4)", SIDEBAR_X + SIDEBAR_MARGIN, SECTION_HEADER_Y, 20, COLOR_ENERGY);
-    int startY = 300, buttonHeight = 65, spacing = 15;
     TowerType types[] = {TOWER_PULSE, TOWER_CANNON, TOWER_CRYO, TOWER_TESLA};
 
     for (int i = 0; i < 4; i++) {
-        Rectangle btnBounds = {SIDEBAR_X + SIDEBAR_MARGIN, startY + i * (buttonHeight + spacing), BUTTON_WIDTH, buttonHeight};
+        Rectangle btnBounds = {SIDEBAR_X + SIDEBAR_MARGIN,
+                               BUILD_MENU_START_Y + i * (BUILD_MENU_BUTTON_HEIGHT + BUILD_MENU_BUTTON_SPACING),
+                               BUTTON_WIDTH, BUILD_MENU_BUTTON_HEIGHT};
         int cost = GetTowerCost(types[i]);
         bool canAfford = game.gold >= cost;
         bool selected = game.placingTower == types[i];
@@ -164,7 +170,9 @@ void DrawBuildMenu(bool interactive) {
 // Tower Inspector
 //----------------------------------------------------------------------------------
 
-static bool HasSelectedTower(void) {
+// Returns true when a tower is selected, clearing a stale or inactive
+// selection (the index may point at a tower that was sold this frame).
+static bool ValidateSelectedTower(void) {
     if (game.selectedTowerIndex == -1 || !game.towers[game.selectedTowerIndex].active) {
         game.selectedTowerIndex = -1;
         return false;
@@ -309,7 +317,7 @@ static void DrawSellButton(const Tower* tower, bool interactive) {
 }
 
 void DrawTowerInspector(bool interactive) {
-    if (!HasSelectedTower()) return;
+    if (!ValidateSelectedTower()) return;
 
     Tower* tower = &game.towers[game.selectedTowerIndex];
 

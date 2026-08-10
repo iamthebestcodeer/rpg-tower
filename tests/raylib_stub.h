@@ -29,11 +29,12 @@ void StubSetRandomSeed(unsigned int seed);  // seed the deterministic LCG
 // draw they assert on and use the helpers in test_util.h (StubFindText,
 // StubFindCircle, StubFindLine).
 typedef enum {
-    STUB_DRAW_TEXT,        // DrawText:              x,y = pos, w = fontSize, text
-    STUB_DRAW_RECT,        // DrawRectangle:         x,y,w,h
-    STUB_DRAW_CIRCLE_FILL, // DrawCircleV:           x,y = center, w = radius
-    STUB_DRAW_CIRCLE_LINE, // DrawCircleLines:       x,y = center, w = radius
-    STUB_DRAW_LINE         // DrawLineEx:            x,y = start, w,h = end
+    STUB_DRAW_TEXT,         // DrawText:              x,y = pos, w = fontSize, text
+    STUB_DRAW_RECT,         // DrawRectangle:         x,y,w,h
+    STUB_DRAW_ROUNDED_RECT, // DrawRectangleRounded:  x,y,w,h (GuiButton bounds)
+    STUB_DRAW_CIRCLE_FILL,  // DrawCircleV:           x,y = center, w = radius
+    STUB_DRAW_CIRCLE_LINE,  // DrawCircleLines:       x,y = center, w = radius
+    STUB_DRAW_LINE          // DrawLineEx:            x,y = start, w,h = end
 } StubDrawKind;
 
 typedef struct {

@@ -286,8 +286,9 @@ static void TestSetTooltipAndDraw(void) {
     // Pathological input that used to overflow the wrap's trial buffer: a
     // single 127-char word fills a line exactly, then the next word hit the
     // terminator write one byte past the buffer. The output must still be
-    // two wrapped lines (no lost words). The stub log truncates the long
-    // line to 63 chars, so assert on that prefix.
+    // two wrapped lines (no lost words). The stub draw log truncates each
+    // line to its text field capacity (minus the terminator), so assert on
+    // that prefix rather than hard-coding the field's current size.
     static char pathological[192];
     memset(pathological, 'a', 127);
     pathological[127] = ' ';
@@ -299,9 +300,9 @@ static void TestSetTooltipAndDraw(void) {
     StubSetMousePosition(100, 100);
     StubResetDrawLog();
     DrawTooltip();
-    char prefix[64];
-    memset(prefix, 'a', 63);
-    prefix[63] = '\0';
+    char prefix[sizeof(((StubDrawCall*)0)->text)];
+    memset(prefix, 'a', sizeof(prefix) - 1);
+    prefix[sizeof(prefix) - 1] = '\0';
     CHECK(StubFindText(prefix) >= 0);
     CHECK(StubFindText("B") >= 0);
 
@@ -414,12 +415,21 @@ static void TestUpgradePathsFitOnScreen(void) {
     CHECK(second >= 0);
 
     // ...and the second one must sit fully above the sell button instead of
-    // being drawn underneath it. GuiButton centers its 18px label in its
-    // button, so the label's Y is the button's vertical midpoint minus 9.
-    // Requiring that center to clear the sell button's top edge by at least
-    // 30px keeps the entire bottom half of the second option visible.
-    float secondCenter = StubDrawLogAt(second).y + 9.0f;
-    CHECK(secondCenter + 30.0f < SCREEN_HEIGHT - 50);
+    // being drawn underneath it. GuiButton logs its bounds as a rounded rect,
+    // so assert on the second button's recorded rectangle directly: its
+    // bottom edge must be at or above the sell button's top edge. The label
+    // is centered vertically in its button, so its vertical midpoint (y + 9)
+    // falls inside the button that owns it.
+    float secondLabelY = StubDrawLogAt(second).y;
+    bool secondButtonFits = false;
+    for (int i = 0; i < StubDrawLogCount(); i++) {
+        StubDrawCall c = StubDrawLogAt(i);
+        if (c.kind == STUB_DRAW_ROUNDED_RECT &&
+            secondLabelY + 9.0f >= c.y && secondLabelY + 9.0f <= c.y + c.h) {
+            secondButtonFits = (c.y + c.h <= SCREEN_HEIGHT - 50);
+        }
+    }
+    CHECK(secondButtonFits);
 }
 
 static void TestUpgradePathsNonBase(void) {
