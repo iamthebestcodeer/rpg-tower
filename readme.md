@@ -85,10 +85,3 @@ intermediate `.o` files).
 | `ui.c` | Sidebar, menus, inspector, tooltips, buttons |
 | `vfx.c` | VFX updating/drawing, particles, floating text, screen shake |
 | `utils.c` | Geometry, lookup, tower metadata, colors, costs, angle interpolation |
-
-## Scope
-
-This restructuring preserves the original global-state design and gameplay
-behavior. Known gameplay quirks from the original single-file version (e.g. the
-double `RebuildEnemyGrid` call, level-up state flow) are intentionally kept
-as-is and are out of scope for this change.
