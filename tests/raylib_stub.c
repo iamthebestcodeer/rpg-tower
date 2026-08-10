@@ -94,7 +94,6 @@ bool IsKeyPressed(int key) {
 
 bool IsMouseButtonPressed(int button) {
     if (button >= 0 && button < MAX_STUB_MOUSE_BUTTONS && s_mouse_pressed[button]) {
-        s_mouse_pressed[button] = false; // edge: consumed once
         return true;
     }
     return false;
@@ -113,8 +112,8 @@ Vector2 GetScreenToWorld2D(Vector2 position, Camera2D camera) {
         float sinR = sinf(camera.rotation * DEG2RAD);
         float dx = (position.x - camera.offset.x) / camera.zoom;
         float dy = (position.y - camera.offset.y) / camera.zoom;
-        world.x = cosR * dx - sinR * dy + camera.target.x;
-        world.y = sinR * dx + cosR * dy + camera.target.y;
+        world.x = cosR * dx + sinR * dy + camera.target.x;
+        world.y = -sinR * dx + cosR * dy + camera.target.y;
     }
     return world;
 }
@@ -283,6 +282,7 @@ Color ColorTint(Color color, Color tint) {
     color.r = (unsigned char)(((int)color.r * (int)tint.r) / 255);
     color.g = (unsigned char)(((int)color.g * (int)tint.g) / 255);
     color.b = (unsigned char)(((int)color.b * (int)tint.b) / 255);
+    color.a = (unsigned char)(((int)color.a * (int)tint.a) / 255);
     return color;
 }
 
@@ -301,13 +301,14 @@ Color ColorBrightness(Color color, float factor) {
 }
 
 Color ColorAlphaBlend(Color dst, Color src, Color tint) {
-    (void)tint;
-    float a = (float)src.a / 255.0f;
+    src = ColorTint(src, tint);
+    float sa = (float)src.a / 255.0f;
+    float da = (float)dst.a / 255.0f;
     Color out;
-    out.r = (unsigned char)((float)src.r * a + (float)dst.r * (1.0f - a));
-    out.g = (unsigned char)((float)src.g * a + (float)dst.g * (1.0f - a));
-    out.b = (unsigned char)((float)src.b * a + (float)dst.b * (1.0f - a));
-    out.a = dst.a;
+    out.r = (unsigned char)((float)src.r * sa + (float)dst.r * da * (1.0f - sa));
+    out.g = (unsigned char)((float)src.g * sa + (float)dst.g * da * (1.0f - sa));
+    out.b = (unsigned char)((float)src.b * sa + (float)dst.b * da * (1.0f - sa));
+    out.a = (unsigned char)(255.0f * (sa + da * (1.0f - sa)));
     return out;
 }
 

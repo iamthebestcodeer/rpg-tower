@@ -238,18 +238,25 @@ static void TestDrawBuildMenu(void) {
     DrawUI(true);
     CHECK(game.placingTower == TOWER_PULSE);
 
-    // unaffordable: click ignored. NOTE: under the stub's consume-once
-    // IsMouseButtonPressed, GuiButton eats the press edge first, so the
-    // "Not enough Gold!" floating-text branch inside DrawBuildMenu is never
-    // covered by this suite. In real raylib the press edge is frame-wide (not
-    // consumed on read), so that branch does fire in the actual game; this
-    // test documents the stub-world behavior only.
+    // unaffordable: click ignored, but floating-text feedback fires.
+    // With the updated stub behavior (pressed state persists throughout the
+    // frame), GuiButton reads the press, and the "Not enough Gold!" branch
+    // inside DrawBuildMenu also fires.
     ResetForTest();
     game.gold = 10;
     StubSetMousePosition(1000, 320);
     StubClickMouse(MOUSE_LEFT_BUTTON);
     DrawUI(true);
     CHECK(game.placingTower == TOWER_NONE);
+    // verify floating-text feedback was created
+    bool foundFeedback = false;
+    for (int i = 0; i < MAX_FLOATING_TEXTS; i++) {
+        if (game.floatingTexts[i].active) {
+            foundFeedback = true;
+            break;
+        }
+    }
+    CHECK(foundFeedback);
 
     // non-interactive: clicks ignored
     ResetForTest();

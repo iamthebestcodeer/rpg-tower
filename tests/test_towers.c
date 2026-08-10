@@ -181,8 +181,11 @@ static void TestTargetingModes(void) {
     game.enemies[mid].waypointIndex = 3;
     game.enemies[far].waypointIndex = 5;
     game.enemies[near].hp = 900;
+    game.enemies[near].maxHp = 900;
     game.enemies[mid].hp = 500;
+    game.enemies[mid].maxHp = 500;
     game.enemies[far].hp = 100;
+    game.enemies[far].maxHp = 100;
     RebuildEnemyGrid();
 
     t->targetingMode = TARGET_FIRST;
