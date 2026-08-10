@@ -149,34 +149,137 @@ float GetAimToleranceDegrees(TowerType type) {
 }
 
 //----------------------------------------------------------------------------------
-// Batched Circle Rendering
+// Batched Rendering
 //----------------------------------------------------------------------------------
 
-// Precomputed 36-segment unit circle (index 36 wraps to index 0). raylib's
-// DrawCircleV() emits this same 36-segment fan but recomputes sinf()/cosf()
-// for every segment of every circle on every frame - with MAX_PARTICLES alive
-// that is hundreds of thousands of trig calls per frame, the single biggest
-// CPU cost in the draw path. Precomputing the unit circle turns each circle
-// into pure vertex submission inside a shared rlBegin(RL_TRIANGLES) block.
-static Vector2 unitCircle[37];
-static bool unitCircleBuilt = false;
+// Adaptive circle tessellation. raylib's DrawCircleV() always emits a
+// 36-segment fan (108 vertices) and recomputes sinf()/cosf() per segment, so a
+// full particle field costs ~400k vertices/frame. Tiny circles don't need 36
+// segments, so we pick a segment count by radius (6..36) and reuse precomputed
+// unit circles, turning each circle into pure vertex submission with ~3-6x
+// fewer vertices for the typical 2-8px particle. Called inside a single
+// rlBegin(RL_TRIANGLES) block shared by all emitters.
+#define CIRCLE_LEVELS 7
+static const int circleSegments[CIRCLE_LEVELS] = { 4, 6, 8, 12, 18, 24, 36 };
+static Vector2 unitCircles[CIRCLE_LEVELS][37];
+static bool unitCirclesBuilt = false;
+
+static int CircleLevelForRadius(float radius)
+{
+    if (radius < 2.2f) return 0;   //  4 segments (diamond - most particles)
+    if (radius < 5.0f) return 1;   //  6 segments
+    if (radius < 9.0f) return 2;   //  8 segments
+    if (radius < 15.0f) return 3;  // 12 segments
+    if (radius < 28.0f) return 4;  // 18 segments
+    if (radius < 40.0f) return 5;  // 24 segments (large auras/circles)
+    return 6;                      // 36 segments (very large - matches DrawCircleV)
+}
 
 void EmitCircleFan(Vector2 center, float radius, Color color)
 {
-    if (radius <= 0.0f) return;
+    if (radius < 0.35f) return; // sub-pixel: invisible, skip entirely
 
-    if (!unitCircleBuilt) {
-        for (int i = 0; i <= 36; i++) {
-            float angle = i * 10.0f * DEG2RAD;
-            unitCircle[i] = (Vector2){ cosf(angle), sinf(angle) };
+    if (!unitCirclesBuilt) {
+        for (int l = 0; l < CIRCLE_LEVELS; l++) {
+            int n = circleSegments[l];
+            float step = 360.0f / (float)n;
+            for (int i = 0; i <= n; i++) {
+                float angle = i * step * DEG2RAD;
+                unitCircles[l][i] = (Vector2){ cosf(angle), sinf(angle) };
+            }
         }
-        unitCircleBuilt = true;
+        unitCirclesBuilt = true;
     }
 
+    int level = CircleLevelForRadius(radius);
+    int n = circleSegments[level];
+    const Vector2* uc = unitCircles[level];
+
     rlColor4ub(color.r, color.g, color.b, color.a);
-    for (int i = 0; i < 36; i++) {
+    for (int i = 0; i < n; i++) {
         rlVertex2f(center.x, center.y);
-        rlVertex2f(center.x + unitCircle[i + 1].x * radius, center.y + unitCircle[i + 1].y * radius);
-        rlVertex2f(center.x + unitCircle[i].x * radius, center.y + unitCircle[i].y * radius);
+        rlVertex2f(center.x + uc[i + 1].x * radius, center.y + uc[i + 1].y * radius);
+        rlVertex2f(center.x + uc[i].x * radius, center.y + uc[i].y * radius);
+    }
+}
+
+// Filled rect into the current rlBegin(RL_TRIANGLES) batch (2 triangles).
+void EmitRect(Rectangle rec, Color color)
+{
+    rlColor4ub(color.r, color.g, color.b, color.a);
+    rlVertex2f(rec.x, rec.y);
+    rlVertex2f(rec.x + rec.width, rec.y);
+    rlVertex2f(rec.x + rec.width, rec.y + rec.height);
+    rlVertex2f(rec.x + rec.width, rec.y + rec.height);
+    rlVertex2f(rec.x, rec.y + rec.height);
+    rlVertex2f(rec.x, rec.y);
+}
+
+// Matches raylib's default textLineSpacing (settable via SetTextLineSpacing()).
+#define TEXT_LINE_SPACING 10.0f
+
+// Draw one glyph at the given position, replicating raylib 6.0's
+// DrawTextCodepoint() exactly (glyph padding and scaleFactor included).
+static void DrawGlyph(Font font, int glyphIndex, Vector2 position, float scaleFactor, Color tint)
+{
+    Rectangle srcRec = {
+        font.recs[glyphIndex].x - (float)font.glyphPadding,
+        font.recs[glyphIndex].y - (float)font.glyphPadding,
+        font.recs[glyphIndex].width + 2.0f * (float)font.glyphPadding,
+        font.recs[glyphIndex].height + 2.0f * (float)font.glyphPadding
+    };
+    Rectangle dstRec = {
+        position.x + font.glyphs[glyphIndex].offsetX * scaleFactor - (float)font.glyphPadding * scaleFactor,
+        position.y + font.glyphs[glyphIndex].offsetY * scaleFactor - (float)font.glyphPadding * scaleFactor,
+        (font.recs[glyphIndex].width + 2.0f * (float)font.glyphPadding) * scaleFactor,
+        (font.recs[glyphIndex].height + 2.0f * (float)font.glyphPadding) * scaleFactor
+    };
+    DrawTexturePro(font.texture, srcRec, dstRec, (Vector2){ 0, 0 }, 0.0f, tint);
+}
+
+// Draw a text string with DrawTextEx's exact glyph placement, using one
+// DrawTexturePro per glyph.
+//
+// WHY NOT rlgl immediate mode: manual rlBegin(RL_QUADS)/rlVertex* quads are
+// invisible on this raylib 6.0 build (only geometry that overflows the
+// 8192-vertex batch renders; small text batches vanish at the end-of-frame
+// flush). DrawTexturePro goes through raylib's own batched path and always
+// renders. It is still ONE rlgl batch for a whole text pass: consecutive
+// same-texture DrawTexturePro calls do not split the draw entry, so the
+// batching win from the old manual quads holds.
+void DrawTextBatched(Font font, const char* text, Vector2 position, float fontSize, float spacing, Color tint)
+{
+    if (font.texture.id == 0) font = GetFontDefault(); // Same guard as DrawTextEx
+
+    float scaleFactor = fontSize / (float)font.baseSize;
+    float offsetX = 0.0f;
+    float offsetY = 0.0f;
+    int length = (int)TextLength(text);
+
+    for (int i = 0; i < length; )
+    {
+        int codepointSize = 0;
+        int codepoint = GetCodepointNext(text + i, &codepointSize);
+        int glyphIndex = GetGlyphIndex(font, codepoint);
+
+        if (codepoint == '\n')
+        {
+            offsetY += fontSize + TEXT_LINE_SPACING; // matches DrawTextEx
+            offsetX = 0.0f;
+        }
+        else
+        {
+            if ((codepoint != ' ') && (codepoint != '\t'))
+                DrawGlyph(font, glyphIndex, (Vector2){ position.x + offsetX, position.y + offsetY }, scaleFactor, tint);
+
+            // Glyph advance, exactly as DrawTextEx computes it: spacing applies
+            // to the unscaled advance, and advanceX == 0 falls back to the
+            // glyph width for fonts without advance metrics.
+            float advance = (font.glyphs[glyphIndex].advanceX == 0)
+                ? (float)font.recs[glyphIndex].width
+                : (float)font.glyphs[glyphIndex].advanceX;
+            offsetX += advance * scaleFactor + spacing;
+        }
+        i += codepointSize;
     }
 }

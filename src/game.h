@@ -29,7 +29,7 @@
 #define MAX_TOWERS 100
 #define MAX_ENEMIES 300
 #define MAX_PROJECTILES 500
-#define MAX_PARTICLES 3000
+#define MAX_PARTICLES 2200
 #define MAX_FLOATING_TEXT 100
 #define MAX_WAYPOINTS 50
 #define MAX_CHAIN_HITS 10
@@ -396,6 +396,14 @@ void FireProjectile(Tower* tower, Enemy* target);
 void HandleProjectileImpact(Projectile* p, Enemy* primaryTarget);
 void ApplyDamageAndEffects(Projectile* p, Enemy* target, bool isCritical);
 
+// Draw-phase profiling (--bench only): when g_drawTrace is set, DrawGame
+// accumulates per-phase frame time in g_drawTraceMs so the benchmark can
+// attribute draw cost precisely.
+#define DRAW_TRACE_PHASES 10
+extern bool g_drawTrace;
+extern double g_drawTraceMs[DRAW_TRACE_PHASES];
+double NowMs(void); // high-resolution monotonic clock (ms), used by the bench + draw trace
+
 void DrawMap(void);
 void DrawEntities(void);
 void DrawTowers(void);
@@ -405,10 +413,15 @@ void DrawProjectiles(void);
 
 void DrawUI(bool interactive);
 
-// Batched circle rendering: emits a filled-circle fan (matching raylib's
-// DrawCircleV geometry) into the current rlBegin(RL_TRIANGLES) block, using a
-// precomputed unit circle so thousands of circles cost zero per-frame trig.
+// Batched rendering: emit primitives into the caller's rlBegin() block so
+// thousands of objects share one rlgl batch instead of one draw call each.
+// EmitCircleFan matches raylib's DrawCircleV geometry with adaptive segment
+// count and zero per-frame trig. EmitRect emits a filled rect. DrawTextBatched
+// draws text with DrawTextEx placement via DrawTexturePro per glyph (always
+// renders on this raylib 6.0 build, unlike raw immediate-mode quads).
 void EmitCircleFan(Vector2 center, float radius, Color color);
+void EmitRect(Rectangle rec, Color color);
+void DrawTextBatched(Font font, const char* text, Vector2 position, float fontSize, float spacing, Color tint);
 void DrawHeroStatus(void);
 void DrawBuildMenu(bool interactive);
 void DrawTowerInspector(bool interactive);
@@ -427,6 +440,8 @@ void ProcessStatusEffects(Enemy* enemy, float dt);
 
 void UpdateVFX(float dt);
 void DrawVFX(void);
+void InitVFX(void);
+void UnloadVFX(void);
 void SpawnParticles(Vector2 position, int count, Color startColor, Color endColor, float speed, float sizeStart, float sizeEnd, bool gravity);
 void AddFloatingText(Vector2 position, const char* text, Color color, bool critical);
 void AddFloatingTextFmt(Vector2 position, Color color, bool critical, const char* fmt, ...)

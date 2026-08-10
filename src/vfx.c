@@ -1,11 +1,19 @@
 #include "game.h"
-#include "rlgl.h"
 
 //----------------------------------------------------------------------------------
 // VFX
 //----------------------------------------------------------------------------------
 
+// Per-frame budget for new floating texts. Heavy fire (multiple fast towers)
+// can request dozens of damage numbers per frame, each costing a formatted
+// string + pool scan; capping creation keeps churn bounded and reduces on-screen
+// clutter. Generous enough that normal play never notices.
+#define MAX_FLOATING_TEXT_PER_FRAME 48
+static int g_floatingTextBudget = MAX_FLOATING_TEXT_PER_FRAME;
+
 void UpdateVFX(float dt) {
+    g_floatingTextBudget = MAX_FLOATING_TEXT_PER_FRAME;
+
     for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
         if (game.floatingTexts[i].active) {
             game.floatingTexts[i].lifetime -= dt;
@@ -32,39 +40,99 @@ void UpdateVFX(float dt) {
     }
 }
 
+//----------------------------------------------------------------------------------
+// Particle sprite
+//----------------------------------------------------------------------------------
+
+// Soft particle sprite: solid core with radial falloff to transparent. Each
+// particle is drawn as one tinted DrawTexturePro quad, which (a) renders
+// independently of the rlgl batch overflow the old manual triangle-fan pass
+// relied on, and (b) gives a soft anti-aliased edge. The falloff edge maps to
+// the particle's radius, so the perceived size matches the old solid discs;
+// the core fraction keeps the center fully opaque.
+#define PARTICLE_SPRITE_SIZE 64
+#define PARTICLE_SPRITE_CORE 0.70f // solid core, as a fraction of half-size
+#define PARTICLE_SPRITE_FADE 1.00f // falloff edge, as a fraction of half-size
+
+static Texture2D s_particleSprite = { 0 };
+
+static Texture2D CreateParticleSprite(void) {
+    const float half = PARTICLE_SPRITE_SIZE / 2.0f;
+    const float coreRadius = PARTICLE_SPRITE_CORE * half;
+    const float fadeRadius = PARTICLE_SPRITE_FADE * half;
+    Image img = GenImageColor(PARTICLE_SPRITE_SIZE, PARTICLE_SPRITE_SIZE, BLANK);
+
+    for (int y = 0; y < PARTICLE_SPRITE_SIZE; y++) {
+        for (int x = 0; x < PARTICLE_SPRITE_SIZE; x++) {
+            float dx = x - half + 0.5f;
+            float dy = y - half + 0.5f;
+            float dist = sqrtf(dx * dx + dy * dy);
+
+            unsigned char alpha = 0;
+            if (dist <= coreRadius) {
+                alpha = 255;
+            } else if (dist < fadeRadius) {
+                float t = (dist - coreRadius) / (fadeRadius - coreRadius);
+                alpha = (unsigned char)(255.0f * (1.0f - t));
+            }
+            ImageDrawPixel(&img, x, y, (Color){ 255, 255, 255, alpha });
+        }
+    }
+
+    Texture2D sprite = LoadTextureFromImage(img);
+    UnloadImage(img);
+    SetTextureFilter(sprite, TEXTURE_FILTER_BILINEAR); // smooth scaling at any size
+    return sprite;
+}
+
+void InitVFX(void) {
+    if (s_particleSprite.id == 0)
+        s_particleSprite = CreateParticleSprite();
+}
+
+void UnloadVFX(void) {
+    if (s_particleSprite.id != 0) {
+        UnloadTexture(s_particleSprite);
+        s_particleSprite.id = 0;
+    }
+}
+
 void DrawVFX(void) {
-    // Batch every active particle into a single triangle fan: raylib's
-    // DrawCircleV() emits a 36-segment circle and recomputes sinf()/cosf() per
-    // segment per circle (plus a per-circle rlBegin/rlEnd), so MAX_PARTICLES
-    // alive can cost hundreds of thousands of trig calls per frame. The
-    // precomputed unit circle in EmitCircleFan makes this pure vertex
-    // submission with no per-frame trig.
-    //
-    // NOTE: bind the 1x1 default white texture (rlSetTexture(0)) so shapes
-    // render with vertex color, mirroring what raylib's own shapes drawing
-    // relies on. Do NOT use GetShapesTexture() here - it is the font atlas,
-    // and vertices would sample it with stale texcoords.
-    rlSetTexture(0);
-    rlBegin(RL_TRIANGLES);
+    // Particles: one tinted DrawTexturePro quad per particle. Every particle
+    // shares the same sprite texture, so the pass is still a single rlgl batch
+    // - and unlike the old manual triangle fan, it renders regardless of batch
+    // size. Sub-pixel particles are skipped to keep the pass cheap.
     for (int i = 0; i < MAX_PARTICLES; i++) {
         if (!game.particles[i].active) continue;
         Particle* p = &game.particles[i];
         float progress = p->life / p->maxLife;
-        Color color = ColorLerp(p->startColor, p->endColor, progress);
+        Color color = ColorTint(ColorLerp(p->startColor, p->endColor, progress), game.environmentColor);
         float size = Lerp(p->startSize, p->endSize, progress);
-        color = ColorTint(color, game.environmentColor);
-        EmitCircleFan(p->position, size, color);
-    }
-    rlEnd();
+        if (size < 0.35f) continue;
 
-    for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
-        if (!game.floatingTexts[i].active) continue;
-        FloatingText* ft = &game.floatingTexts[i];
-        float alpha = Clamp(ft->lifetime / 0.5f, 0.0f, 1.0f);
-        int fontSize = ft->critical ? 24 : 20;
-        // Use DrawText for no rotation
-        DrawText(ft->text, (int)ft->position.x + 1, (int)ft->position.y + 1, fontSize, Fade(BLACK, alpha));
-        DrawText(ft->text, (int)ft->position.x, (int)ft->position.y, fontSize, Fade(ft->color, alpha));
+        Rectangle dst = { p->position.x - size, p->position.y - size, size * 2.0f, size * 2.0f };
+        DrawTexturePro(s_particleSprite, (Rectangle){ 0, 0, (float)s_particleSprite.width, (float)s_particleSprite.height }, dst, (Vector2){ 0, 0 }, 0.0f, color);
+    }
+
+    // All floating text (shadows + main) is drawn via DrawTextBatched, which
+    // renders glyphs through DrawTexturePro: the font texture never changes
+    // between glyphs, so the entire pass stays in one rlgl batch. Shadows are
+    // only drawn for critical (large) text to halve glyph vertices for the
+    // common small damage numbers.
+    {
+        Font font = GetFontDefault();
+        for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
+            if (!game.floatingTexts[i].active) continue;
+            FloatingText* ft = &game.floatingTexts[i];
+            float alpha = Clamp(ft->lifetime / 0.5f, 0.0f, 1.0f);
+            int fontSize = ft->critical ? 24 : 20;
+            float x = (float)(int)ft->position.x;
+            float y = (float)(int)ft->position.y;
+            // Spacing matches raylib's DrawText default (fontSize/10).
+            if (ft->critical)
+                DrawTextBatched(font, ft->text, (Vector2){ x + 1.0f, y + 1.0f }, (float)fontSize, (float)fontSize/10.0f, Fade(BLACK, alpha));
+            DrawTextBatched(font, ft->text, (Vector2){ x, y }, (float)fontSize, (float)fontSize/10.0f, Fade(ft->color, alpha));
+        }
     }
 }
 
@@ -115,6 +183,9 @@ void SpawnParticles(Vector2 position, int count, Color startColor, Color endColo
 }
 
 static FloatingText *ReserveFloatingTextSlot(void) {
+    if (g_floatingTextBudget <= 0) return NULL;
+    g_floatingTextBudget--;
+
     int index = -1;
     for (int i = game.nextFreeFloatingText; i < MAX_FLOATING_TEXT; i++) {
         if (!game.floatingTexts[i].active) { index = i; break; }

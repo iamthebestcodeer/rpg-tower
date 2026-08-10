@@ -3,6 +3,14 @@
 
 static int pendingHeroSkill = -1;
 
+bool g_drawTrace = false;
+double g_drawTraceMs[DRAW_TRACE_PHASES] = {0};
+static int g_tracePhase = -1;
+static double g_traceT0 = 0.0;
+
+static void TraceBegin(int phase) { if (!g_drawTrace) return; g_tracePhase = phase; g_traceT0 = NowMs(); }
+static void TraceEnd(int phase)   { if (!g_drawTrace || g_tracePhase != phase) return; g_drawTraceMs[phase] += NowMs() - g_traceT0; }
+
 // Called from UpdateHeroLevelUp to apply a skill queued during Draw
 void ConsumePendingHeroSkill(void) {
     if (pendingHeroSkill >= 0 && pendingHeroSkill < NUM_HERO_SKILLS && game.hero.skillPoints > 0) {
@@ -18,8 +26,10 @@ void ConsumePendingHeroSkill(void) {
 //----------------------------------------------------------------------------------
 
 void DrawGame(void) {
+    TraceBegin(0); // begin/clear
     BeginDrawing();
     ClearBackground(COLOR_BG);
+    TraceEnd(0);
 
     if (game.state == GS_TITLE) {
         DrawText("AETHERIUM VANGUARD", SCREEN_WIDTH/2 - MeasureText("AETHERIUM VANGUARD", 60)/2, SCREEN_HEIGHT/3 - 30, 60, COLOR_ENERGY);
@@ -28,13 +38,23 @@ void DrawGame(void) {
         DrawText("Click or Press ENTER to Start", SCREEN_WIDTH/2 - MeasureText("Click or Press ENTER to Start", 30)/2, SCREEN_HEIGHT/2, 30, Fade(COLOR_TEXT_PRIMARY, alpha));
         DrawText("Controls: WASD (Move), Q (Dash), E (Burst), Space (Attack), 1-4/Click (Build), N (Next Wave)", 20, SCREEN_HEIGHT - 30, 18, COLOR_TEXT_MUTED);
     } else {
+        TraceBegin(1); // map
         BeginMode2D(game.camera);
         DrawMap();
+        TraceEnd(1);
+
+        TraceBegin(2); // entities (enemies+towers+hero+projectiles)
         DrawEntities();
+        TraceEnd(2);
+
+        TraceBegin(3); // vfx (particles + floating text)
         DrawVFX();
+        TraceEnd(3);
         EndMode2D();
 
+        TraceBegin(4); // ui
         DrawUI(game.state == GS_PLAYING);
+        TraceEnd(4);
 
         if (game.state == GS_PAUSED) {
             DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.7f));
@@ -81,11 +101,15 @@ void DrawGame(void) {
             DrawText("Press R to Restart", SCREEN_WIDTH/2 - MeasureText("Press R to Restart", 20)/2, SCREEN_HEIGHT/2 + 60, 20, WHITE);
         }
 
+        TraceBegin(5); // overlays (pause/levelup/gameover/tooltip)
         if (game.tooltip.visible)
             DrawTooltip();
+        TraceEnd(5);
     }
 
+    TraceBegin(9); // end drawing
     EndDrawing();
+    TraceEnd(9);
 }
 
 void DrawMap(void) {
@@ -101,10 +125,18 @@ void DrawMap(void) {
 }
 
 void DrawEntities(void) {
+    TraceBegin(6);
     DrawEnemies();
+    TraceEnd(6);
+
+    TraceBegin(7);
     DrawTowers();
+    TraceEnd(7);
+
+    TraceBegin(8);
     DrawHero();
     DrawProjectiles();
+    TraceEnd(8);
 }
 
 static float EnemyDrawSize(EnemyType type) {
@@ -144,8 +176,7 @@ void DrawEnemies() {
     }
     rlEnd();
 
-    // Pass 2: per-enemy overlays (polygons, outlines, auras, status text,
-    // health bars) - low volume, kept as individual raylib calls.
+    // Pass 2: per-enemy overlays (polygons, outlines, auras) - low volume.
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];
@@ -163,40 +194,69 @@ void DrawEnemies() {
         // Healer aura
         if (e->type == ENEMY_HEALER)
             DrawCircleV(e->position, 100.0f, Fade(LIME, 0.1f));
+    }
 
-        // Stun text
-        if (e->statusCount > 0) {
+    // Pass 3: health bars, batched into one triangle block. The old per-enemy
+    // DrawRectangleRec/DrawRectangle/DrawRectangleLinesEx was ~3 individual
+    // draw calls per damaged enemy (~600/frame in heavy waves); these are all
+    // flat-color rects so they merge into a single batch.
+    rlSetTexture(0);
+    rlBegin(RL_TRIANGLES);
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (!game.enemies[i].active) continue;
+        Enemy* e = &game.enemies[i];
+        if (e->maxHp <= 0 || e->hp >= e->maxHp) continue;
+        float hpPercent = Clamp(e->hp / e->maxHp, 0.0f, 1.0f);
+        float size = EnemyDrawSize(e->type);
+        float barWidth = (size > 20) ? 60.0f : 40.0f;
+        Rectangle hpBar = { e->position.x - barWidth/2, e->position.y - size - 10, barWidth, 6 };
+        // Bar background + fill (the 1px black outline was 4 extra rects per
+        // bar - ~5k vertices/frame under load for a barely-visible border).
+        EmitRect(hpBar, COLOR_UI_BG);
+        Color hpColor = (hpPercent < 0.3f) ? RED : (hpPercent < 0.6f) ? YELLOW : GREEN;
+        EmitRect((Rectangle){ hpBar.x, hpBar.y, hpBar.width * hpPercent, hpBar.height }, hpColor);
+    }
+    rlEnd();
+
+    // Pass 4: stun labels. All glyphs share the font texture, so the whole
+    // pass stays in one rlgl batch (see DrawTextBatched).
+    {
+        Font font = GetFontDefault();
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            if (!game.enemies[i].active) continue;
+            Enemy* e = &game.enemies[i];
+            if (e->statusCount <= 0) continue;
+            bool stunned = false;
             for (int j = 0; j < e->statusCount; j++) {
-                if (e->status[j].type == STATUS_STUN) {
-                    DrawText("*STUN*", (int)e->position.x - 20, (int)e->position.y - size - 25, 16, YELLOW);
-                    break;
-                }
+                if (e->status[j].type == STATUS_STUN) { stunned = true; break; }
             }
-        }
-
-        // Health bar
-        if (e->maxHp > 0 && e->hp < e->maxHp) {
-            float hpPercent = Clamp(e->hp / e->maxHp, 0.0f, 1.0f);
-            int barWidth = (size > 20) ? 60 : 40;
-            Rectangle hpBar = {e->position.x - barWidth/2, e->position.y - size - 10, barWidth, 6};
-            DrawRectangleRec(hpBar, COLOR_UI_BG);
-            Color hpColor = (hpPercent < 0.3f) ? RED : (hpPercent < 0.6f) ? YELLOW : GREEN;
-            DrawRectangle(hpBar.x, hpBar.y, (int)(hpBar.width * hpPercent), hpBar.height, hpColor);
-            DrawRectangleLinesEx(hpBar, 1.0f, BLACK);
+            if (!stunned) continue;
+            float size = EnemyDrawSize(e->type);
+            // Spacing matches raylib's DrawText default (fontSize/10).
+            DrawTextBatched(font, "*STUN*", (Vector2){ e->position.x - 20, e->position.y - size - 25 }, 16.0f, 16.0f/10.0f, YELLOW);
         }
     }
 }
 
 void DrawTowers() {
+    // Pass 1: all tower bases, batched into one triangle block (was one
+    // DrawRectangle call per tower, ~100 draw calls/frame).
+    rlSetTexture(0);
+    rlBegin(RL_TRIANGLES);
     for (int i = 0; i < MAX_TOWERS; i++) {
         if (!game.towers[i].active) continue;
         Tower* t = &game.towers[i];
         Color color = GetTowerColor(t->type);
         Color baseColor = ColorTint(ColorBrightness(color, -0.6f), game.environmentColor);
-        Color turretColor = ColorTint(color, game.environmentColor);
+        EmitRect((Rectangle){ t->position.x - TILE_SIZE/2 + 4, t->position.y - TILE_SIZE/2 + 4, TILE_SIZE - 8, TILE_SIZE - 8 }, baseColor);
+    }
+    rlEnd();
 
-        // Base
-        DrawRectangle(t->position.x - TILE_SIZE/2 + 4, t->position.y - TILE_SIZE/2 + 4, TILE_SIZE - 8, TILE_SIZE - 8, baseColor);
+    for (int i = 0; i < MAX_TOWERS; i++) {
+        if (!game.towers[i].active) continue;
+        Tower* t = &game.towers[i];
+        Color color = GetTowerColor(t->type);
+        Color turretColor = ColorTint(color, game.environmentColor);
 
         // Specialized visuals
         if (t->type == TOWER_CRYO || t->type == TOWER_T4_CRYO_FREEZER) {
@@ -255,10 +315,20 @@ void DrawTowers() {
             }
         }
 
-        // Level indicator
-        char lvlStr[8]; snprintf(lvlStr, sizeof(lvlStr), "L%d", t->stats.level);
-        Color levelColor = (t->stats.level >= TOWER_BASE_MAX_LEVEL && t->type < TOWER_T4_PULSE_REPEATER) ? YELLOW : WHITE;
-        DrawText(lvlStr, (int)t->position.x - TILE_SIZE/2 + 4, (int)t->position.y - TILE_SIZE/2 + 4, 16, levelColor);
+    }
+
+    // Level indicators, drawn with DrawTextBatched (one font texture, one
+    // rlgl batch for every tower label).
+    {
+        Font font = GetFontDefault();
+        for (int i = 0; i < MAX_TOWERS; i++) {
+            if (!game.towers[i].active) continue;
+            Tower* t = &game.towers[i];
+            char lvlStr[8]; snprintf(lvlStr, sizeof(lvlStr), "L%d", t->stats.level);
+            Color levelColor = (t->stats.level >= TOWER_BASE_MAX_LEVEL && t->type < TOWER_T4_PULSE_REPEATER) ? YELLOW : WHITE;
+            // Spacing matches raylib's DrawText default (fontSize/10).
+            DrawTextBatched(font, lvlStr, (Vector2){ t->position.x - TILE_SIZE/2 + 4, t->position.y - TILE_SIZE/2 + 4 }, 16.0f, 16.0f/10.0f, levelColor);
+        }
     }
 }
 

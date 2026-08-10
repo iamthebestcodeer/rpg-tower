@@ -74,7 +74,7 @@ void UpdateEnemies(float dt) {
                         AddFloatingTextFmt(game.enemies[j].position, GREEN, false, "+%.0f HP", healAmount);
                     }
                 }
-                SpawnParticles(e->position, 10, GREEN, Fade(GREEN, 0.0f), 50.0f, 5.0f, 1.0f, false);
+                SpawnParticles(e->position, 8, GREEN, Fade(GREEN, 0.0f), 50.0f, 5.0f, 1.0f, false);
             }
         }
 
@@ -110,7 +110,7 @@ void UpdateEnemies(float dt) {
         if (e->waypointIndex >= game.map.waypointCount) {
             game.lives--;
             e->active = false;
-            SpawnParticles(e->position, 50, COLOR_DANGER, COLOR_DANGER, 100.0f, 10.0f, 2.0f, false);
+            SpawnParticles(e->position, 30, COLOR_DANGER, COLOR_DANGER, 100.0f, 10.0f, 2.0f, false);
             ScreenShake(5.0f, 0.3f);
         }
     }
@@ -412,7 +412,7 @@ void HandleEnemyDeath(int enemyIndex, int sourceTowerIndex) {
     AddFloatingTextFmt(e->position, COLOR_GOLD, false, "+%dG", e->goldValue);
     if (e->aetherValue > 0)
         AddFloatingTextFmt((Vector2){e->position.x, e->position.y + 20}, COLOR_AETHER_RES, false, "+%dA", e->aetherValue);
-    SpawnParticles(e->position, 40, RED, Fade(GRAY, 0.0f), 100.0f, 8.0f, 2.0f, true);
+    SpawnParticles(e->position, 24, RED, Fade(GRAY, 0.0f), 100.0f, 8.0f, 2.0f, true);
 
     if (e->type == ENEMY_SPAWNER) {
         for (int i = 0; i < 4; i++) {
