@@ -133,21 +133,20 @@ void AV_AntiDebug(void)
             if (hDebugObj != NULL) detected = 1;
     }
 
-    // 5) Timing check: debugger single-step / breakpoints inflate delta.
-    if (!detected) {
-        LARGE_INTEGER freq, t0, t1;
-        if (QueryPerformanceFrequency(&freq) && freq.QuadPart) {
-            QueryPerformanceCounter(&t0);
-            // ~0.5M no-op iterations
-            volatile unsigned long long acc = 0;
-            for (int i = 0; i < 500000; i++) acc += (unsigned long long)i;
-            (void)acc;
-            QueryPerformanceCounter(&t1);
-            double ms = (double)(t1.QuadPart - t0.QuadPart) * 1000.0 / (double)freq.QuadPart;
-            // Under debugger, the loop is ~10-100x slower; 50ms threshold is safe for real HW.
-            if (ms > 80.0) detected = 1;
-        }
-    }
+    // 5) Timing probe intentionally removed.
+    // A wall-time probe of a tight loop (80 ms threshold) is prone to
+    // false positives: normal Windows scheduling stalls, VM contention,
+    // or a busy GitHub Actions runner can easily deschedule the process
+    // for >80 ms and would have been misclassified as "debugged", causing
+    // a silent ExitProcess(0) that kills gameplay or swallows --bench
+    // results with a success exit code. The four structural checks above
+    // (IsDebuggerPresent, CheckRemoteDebuggerPresent, PEB BeingDebugged,
+    // NtQueryInformationProcess DebugPort/Object) are sufficient and have
+    // no benign false-positive mode. If a timing heuristic is re-added
+    // it must not singularly trigger termination — require corroboration
+    // from another check or multiple consecutive outliers, and exit
+    // non-zero so failures are visible.
+    (void)detected; // keep variable used in builds without the probe
 
     if (detected) {
         // Silent termination – no MessageBox, no stdout/stderr, no exit code that screams "anti-debug".

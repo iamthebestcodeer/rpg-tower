@@ -89,7 +89,8 @@ if ($Release -and $LASTEXITCODE -eq 0) {
         Write-Host 'Packing with UPX --best --lzma (anti-static-analysis)...' -ForegroundColor Cyan
         & upx --best --lzma $Target
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning 'UPX packing failed — shipping unstripped binary.'
+            Write-Warning 'UPX packing failed — shipping unpacked binary (build still succeeds).'
+            $global:LASTEXITCODE = 0
         }
     } else {
         Write-Host 'UPX not found — skipping pack. Install mingw-w64-ucrt-x86_64-upx for full hardening.' -ForegroundColor DarkYellow
