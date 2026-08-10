@@ -264,7 +264,8 @@ void DrawLine(int startPosX, int startPosY, int endPosX, int endPosY, Color colo
 }
 
 void DrawLineEx(Vector2 startPos, Vector2 endPos, float thick, Color color) {
-    (void)startPos; (void)endPos; (void)thick; (void)color;
+    (void)thick;
+    StubLogDraw(STUB_DRAW_LINE, startPos.x, startPos.y, endPos.x, endPos.y, color);
 }
 
 void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,

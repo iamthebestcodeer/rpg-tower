@@ -135,4 +135,13 @@ static inline int StubFindCircle(StubDrawKind kind, float x, float y, float r, f
     return -1;
 }
 
+static inline int StubFindLine(float x0, float y0, float x1, float y1, float tol) {
+    for (int i = 0; i < StubDrawLogCount(); i++) {
+        StubDrawCall c = StubDrawLogAt(i);
+        if (c.kind == STUB_DRAW_LINE && fabsf(c.x - x0) <= tol && fabsf(c.y - y0) <= tol &&
+            fabsf(c.w - x1) <= tol && fabsf(c.h - y1) <= tol) return i;
+    }
+    return -1;
+}
+
 #endif // TEST_UTIL_H
