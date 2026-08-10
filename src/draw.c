@@ -5,11 +5,26 @@ static int pendingHeroSkill = -1;
 
 bool g_drawTrace = false;
 double g_drawTraceMs[DRAW_TRACE_PHASES] = {0};
-static int g_tracePhase = -1;
-static double g_traceT0 = 0.0;
+// Trace phases nest: DrawEntities (phase 2) runs its per-subgroup phases 6-8
+// inside it, so a single "current phase" slot would let an inner TraceBegin
+// overwrite the outer phase and the outer TraceEnd would then never match
+// (the aggregate time stays zero). Keep a LIFO stack of {phase, start} frames
+// so the outer phase still spans its whole group while each inner phase
+// measures only itself.
+typedef struct { int phase; double startMs; } TraceFrame;
+static TraceFrame g_traceStack[DRAW_TRACE_PHASES];
+static int g_traceDepth = 0;
 
-static void TraceBegin(int phase) { if (!g_drawTrace) return; g_tracePhase = phase; g_traceT0 = NowMs(); }
-static void TraceEnd(int phase)   { if (!g_drawTrace || g_tracePhase != phase) return; g_drawTraceMs[phase] += NowMs() - g_traceT0; }
+static void TraceBegin(int phase) {
+    if (!g_drawTrace || g_traceDepth >= DRAW_TRACE_PHASES) return;
+    g_traceStack[g_traceDepth++] = (TraceFrame){ phase, NowMs() };
+}
+static void TraceEnd(int phase) {
+    if (!g_drawTrace || g_traceDepth == 0) return;
+    if (g_traceStack[g_traceDepth - 1].phase != phase) return;
+    g_drawTraceMs[phase] += NowMs() - g_traceStack[g_traceDepth - 1].startMs;
+    g_traceDepth--;
+}
 
 // Called from UpdateHeroLevelUp to apply a skill queued during Draw
 void ConsumePendingHeroSkill(void) {

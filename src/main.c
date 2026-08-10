@@ -20,10 +20,13 @@ double NowMs(void) {
 // to stdout and exits. No effect on normal gameplay. Used to verify
 // performance work with a stable, repeatable workload.
 //----------------------------------------------------------------------------------
+#define BENCH_DEFAULT_FRAMES 400
+#define BENCH_MAX_FRAMES     1000000 // ceiling on --frames: bounds the sample buffer and the run
+#define BENCH_WARMUP_FRAMES  30
+
 static bool g_benchMode = false;
 static bool g_benchReady = false;
-static int g_benchTotalFrames = 400;
-static int g_benchWarmupFrames = 30;
+static int g_benchTotalFrames = BENCH_DEFAULT_FRAMES;
 static int g_benchFrame = 0;
 static double g_benchLastTime = 0.0;
 static double g_benchLastUpdateMs = 0.0;
@@ -36,6 +39,22 @@ static double* g_benchSamples = NULL; // per-frame times for median/percentiles
 static double g_benchUpdateMs = 0.0;
 static double g_benchDrawMs = 0.0;
 static long g_sumParticles = 0, g_sumEnemies = 0, g_sumProjectiles = 0, g_sumTexts = 0;
+
+// Parses the --frames argument into a frame count. Returns -1 when the value
+// is not a positive integer within [1, BENCH_MAX_FRAMES] so main() can print
+// the usage line and abort - an unchecked count would corrupt the sample
+// buffer (zero/negative indexing) or the reported statistics (divide by zero).
+static int ParseBenchFrames(const char* raw) {
+    char* end = NULL;
+    long count = strtol(raw, &end, 10);
+    if (end == raw || *end != '\0' || count <= 0 || count > BENCH_MAX_FRAMES)
+        return -1;
+    return (int)count;
+}
+
+static void PrintBenchUsage(const char* program) {
+    fprintf(stderr, "Usage: %s [--bench [--frames <positive integer>]]\n", program);
+}
 
 static void SetupBenchmarkScene(void) {
     // Deterministic heavy scene: fill the map with towers, then drop a large
@@ -103,18 +122,18 @@ static bool BenchmarkTick(void) {
     g_benchLastTime = now;
     g_benchFrame++;
 
-    if (g_benchFrame > g_benchWarmupFrames && g_benchFrame <= g_benchWarmupFrames + g_benchTotalFrames) {
+    if (g_benchFrame > BENCH_WARMUP_FRAMES && g_benchFrame <= BENCH_WARMUP_FRAMES + g_benchTotalFrames) {
         g_benchSumMs += ms;
         if (ms < g_benchMinMs) g_benchMinMs = ms;
         if (ms > g_benchMaxMs) g_benchMaxMs = ms;
-        g_benchSamples[g_benchFrame - g_benchWarmupFrames - 1] = ms;
+        g_benchSamples[g_benchFrame - BENCH_WARMUP_FRAMES - 1] = ms;
     }
 
     // Per-phase timing for profiling (always tracked, printed at the end)
     g_benchUpdateMs += g_benchLastUpdateMs;
     g_benchDrawMs += g_benchLastDrawMs;
 
-    if (g_benchFrame > g_benchWarmupFrames) {
+    if (g_benchFrame > BENCH_WARMUP_FRAMES) {
         int pe = 0, en = 0, pr = 0, ft = 0;
         for (int i = 0; i < MAX_PARTICLES; i++) if (game.particles[i].active) pe++;
         for (int i = 0; i < MAX_ENEMIES; i++) if (game.enemies[i].active) en++;
@@ -123,7 +142,7 @@ static bool BenchmarkTick(void) {
         g_sumParticles += pe; g_sumEnemies += en; g_sumProjectiles += pr; g_sumTexts += ft;
     }
 
-    if (g_benchFrame >= g_benchWarmupFrames + g_benchTotalFrames) {
+    if (g_benchFrame >= BENCH_WARMUP_FRAMES + g_benchTotalFrames) {
         double avgMs = g_benchSumMs / g_benchTotalFrames;
         // Median + P90 (robust against the machine's background noise spikes)
         for (int i = 1; i < g_benchTotalFrames; i++) {
@@ -164,8 +183,20 @@ static bool BenchmarkTick(void) {
 
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--bench") == 0) g_benchMode = true;
-        else if (strcmp(argv[i], "--frames") == 0 && (i + 1) < argc) g_benchTotalFrames = atoi(argv[++i]);
+        if (strcmp(argv[i], "--bench") == 0) {
+            g_benchMode = true;
+        } else if (strcmp(argv[i], "--frames") == 0) {
+            if (i + 1 >= argc) {
+                PrintBenchUsage(argv[0]);
+                return 1;
+            }
+            int frames = ParseBenchFrames(argv[++i]);
+            if (frames < 0) {
+                PrintBenchUsage(argv[0]);
+                return 1;
+            }
+            g_benchTotalFrames = frames;
+        }
     }
 
     // Resource note: MSAA 4x was the single biggest GPU cost in this game - it
@@ -186,7 +217,12 @@ int main(int argc, char* argv[]) {
     if (g_benchMode) {
         g_drawTrace = true;
         SetupBenchmarkScene();
-        g_benchSamples = (double*)malloc(g_benchTotalFrames * sizeof(double));
+        g_benchSamples = (double*)malloc((size_t)g_benchTotalFrames * sizeof(double));
+        if (!g_benchSamples) {
+            fprintf(stderr, "BENCHMARK: failed to allocate %d sample slots\n", g_benchTotalFrames);
+            CloseWindow();
+            return 1;
+        }
     }
 
     while (!WindowShouldClose()) {
