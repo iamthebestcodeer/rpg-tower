@@ -1,4 +1,5 @@
 #include "game.h"
+#include "rlgl.h"
 
 //----------------------------------------------------------------------------------
 // Utility
@@ -144,5 +145,38 @@ float GetAimToleranceDegrees(TowerType type) {
             return 15.0f;
         default:
             return 20.0f;
+    }
+}
+
+//----------------------------------------------------------------------------------
+// Batched Circle Rendering
+//----------------------------------------------------------------------------------
+
+// Precomputed 36-segment unit circle (index 36 wraps to index 0). raylib's
+// DrawCircleV() emits this same 36-segment fan but recomputes sinf()/cosf()
+// for every segment of every circle on every frame - with MAX_PARTICLES alive
+// that is hundreds of thousands of trig calls per frame, the single biggest
+// CPU cost in the draw path. Precomputing the unit circle turns each circle
+// into pure vertex submission inside a shared rlBegin(RL_TRIANGLES) block.
+static Vector2 unitCircle[37];
+static bool unitCircleBuilt = false;
+
+void EmitCircleFan(Vector2 center, float radius, Color color)
+{
+    if (radius <= 0.0f) return;
+
+    if (!unitCircleBuilt) {
+        for (int i = 0; i <= 36; i++) {
+            float angle = i * 10.0f * DEG2RAD;
+            unitCircle[i] = (Vector2){ cosf(angle), sinf(angle) };
+        }
+        unitCircleBuilt = true;
+    }
+
+    rlColor4ub(color.r, color.g, color.b, color.a);
+    for (int i = 0; i < 36; i++) {
+        rlVertex2f(center.x, center.y);
+        rlVertex2f(center.x + unitCircle[i + 1].x * radius, center.y + unitCircle[i + 1].y * radius);
+        rlVertex2f(center.x + unitCircle[i].x * radius, center.y + unitCircle[i].y * radius);
     }
 }

@@ -1,4 +1,5 @@
 #include "game.h"
+#include "rlgl.h"
 
 static int pendingHeroSkill = -1;
 
@@ -106,34 +107,55 @@ void DrawEntities(void) {
     DrawProjectiles();
 }
 
+static float EnemyDrawSize(EnemyType type) {
+    switch (type) {
+        case ENEMY_BASIC: return 12.0f;
+        case ENEMY_FAST: return 10.0f;
+        case ENEMY_TANK: return 18.0f;
+        case ENEMY_ETHEREAL: return 14.0f;
+        case ENEMY_HEALER: return 15.0f;
+        case ENEMY_SPAWNER: return 20.0f;
+        case ENEMY_MINION: return 8.0f;
+        case ENEMY_BOSS: return 28.0f;
+        default: return 10.0f;
+    }
+}
+
 void DrawEnemies() {
+    // Pass 1: batch every base body circle into one triangle fan (zero per-
+    // frame trig; see EmitCircleFan). Healer/spawner draw polygons instead
+    // and are handled in pass 2 with the overlays. Note that drawing all
+    // bodies before all overlays slightly changes cross-enemy z-order (bars
+    // and outlines always sit above bodies) - visually negligible, but
+    // intentional for the batching win.
+    //
+    // rlSetTexture(0) binds the 1x1 default white texture so shapes render
+    // with vertex color, same as raylib's own shapes path.
+    rlSetTexture(0);
+    rlBegin(RL_TRIANGLES);
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];
+        if (e->type == ENEMY_HEALER || e->type == ENEMY_SPAWNER) continue;
 
-        // Base size by type
-        float size;
-        switch (e->type) {
-            case ENEMY_BASIC: size = 12.0f; break;
-            case ENEMY_FAST: size = 10.0f; break;
-            case ENEMY_TANK: size = 18.0f; break;
-            case ENEMY_ETHEREAL: size = 14.0f; break;
-            case ENEMY_HEALER: size = 15.0f; break;
-            case ENEMY_SPAWNER: size = 20.0f; break;
-            case ENEMY_MINION: size = 8.0f; break;
-            case ENEMY_BOSS: size = 28.0f; break;
-            default: size = 10.0f;
-        }
+        float size = EnemyDrawSize(e->type);
+        Color drawColor = ColorTint(e->visualTint, game.environmentColor);
+        EmitCircleFan(e->position, size, drawColor);
+    }
+    rlEnd();
 
-        // Apply visual state (computed in ProcessStatusEffects)
+    // Pass 2: per-enemy overlays (polygons, outlines, auras, status text,
+    // health bars) - low volume, kept as individual raylib calls.
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (!game.enemies[i].active) continue;
+        Enemy* e = &game.enemies[i];
+        float size = EnemyDrawSize(e->type);
         Color drawColor = ColorTint(e->visualTint, game.environmentColor);
 
         if (e->type == ENEMY_HEALER)
             DrawPoly(e->position, 4, size, 45.0f, drawColor);
         else if (e->type == ENEMY_SPAWNER)
             DrawPoly(e->position, 5, size, 0.0f, drawColor);
-        else
-            DrawCircleV(e->position, size, drawColor);
 
         if (e->visualHasOutline)
             DrawCircleLines(e->position.x, e->position.y, size + 3.0f, e->visualOutlineColor);
@@ -256,6 +278,11 @@ void DrawHero() {
 }
 
 void DrawProjectiles() {
+    // Batch projectile bodies (and energy glows) into one triangle fan, same
+    // trig-free EmitCircleFan path as particles/enemies. rlSetTexture(0)
+    // binds the white default texture (see DrawEnemies for the rationale).
+    rlSetTexture(0);
+    rlBegin(RL_TRIANGLES);
     for (int i = 0; i < MAX_PROJECTILES; i++) {
         if (!game.projectiles[i].active) continue;
         Projectile* p = &game.projectiles[i];
@@ -268,8 +295,9 @@ void DrawProjectiles() {
             case TOWER_TESLA: case TOWER_T4_TESLA_CHAIN: size = 5.0f; break;
             default: break;
         }
-        DrawCircleV(p->position, size, color);
+        EmitCircleFan(p->position, size, color);
         if (p->damageType == DMG_ENERGY)
-            DrawCircleV(p->position, size + 5.0f, Fade(color, 0.4f));
+            EmitCircleFan(p->position, size + 5.0f, Fade(color, 0.4f));
     }
+    rlEnd();
 }

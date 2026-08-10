@@ -18,7 +18,7 @@ From `src/`:
 .\build.ps1
 ```
 
-This runs a single `gcc` command with `-std=c99 -Wall -Wextra -O2`, resolving
+This runs a single `gcc` command with `-std=c99 -Wall -Wextra -O3`, resolving
 raylib flags via `pkg-config`, and produces `game.exe`.
 
 ## Run
@@ -79,6 +79,12 @@ intermediate `.o` files).
   screen does no wasted work and pause genuinely freezes particles/floaties.
 - **Deterministic draw path:** Tesla sparkles are time-based instead of calling
   `GetRandomValue` per tower per frame.
+- **Batched circle rendering:** particles, projectiles, and enemy bodies are
+  emitted as precomputed triangle fans inside a single `rlBegin` block instead
+  of per-circle `DrawCircleV` calls. Raylib's circle draws recompute
+  `sinf()`/`cosf()` for every segment of every circle every frame, which with
+  `MAX_PARTICLES` alive is hundreds of thousands of trig calls per frame; the
+  batched path costs zero per-frame trig.
 - **Spatial grid:** enemy queries (tower targeting, AoE, hero attacks) go
   through the spatial grid, rebuilt before tower queries and again before
   projectile impacts (enemy movement invalidates cell membership mid-frame).
