@@ -60,7 +60,6 @@ void ResetGame(void) {
     game.waveActive = false;
     game.placingTower = TOWER_NONE;
     game.selectedTowerIndex = -1;
-    game.showGrid = false;
     game.enemyIdCounter = 1;
     game.dayNightCycle = 0.0f;
     game.screenShakeDuration = 0.0f;

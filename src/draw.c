@@ -13,7 +13,7 @@ void DrawGame(void) {
         DrawText("PRESTIGE EDITION", SCREEN_WIDTH/2 - MeasureText("PRESTIGE EDITION", 40)/2, SCREEN_HEIGHT/3 + 40, 40, COLOR_AETHER_RES);
         float alpha = (sinf(game.globalTime * 2.0f) + 1.0f) / 2.0f;
         DrawText("Click or Press ENTER to Start", SCREEN_WIDTH/2 - MeasureText("Click or Press ENTER to Start", 30)/2, SCREEN_HEIGHT/2, 30, Fade(COLOR_TEXT_PRIMARY, alpha));
-        DrawText("Controls: WASD (Move), Q (Dash), E (Burst), Space (Attack), 1-4/Click (Build), N (Next Wave), G (Grid)", 20, SCREEN_HEIGHT - 30, 18, COLOR_TEXT_MUTED);
+        DrawText("Controls: WASD (Move), Q (Dash), E (Burst), Space (Attack), 1-4/Click (Build), N (Next Wave)", 20, SCREEN_HEIGHT - 30, 18, COLOR_TEXT_MUTED);
     } else {
         BeginMode2D(game.camera);
         DrawMap();
@@ -86,16 +86,6 @@ void DrawMap(void) {
     DrawRectangle(0, 0, GAME_AREA_WIDTH, SCREEN_HEIGHT, game.environmentColor);
     EndBlendMode();
 
-    if (game.showGrid) {
-        for (int y = 0; y < MAP_HEIGHT; y++) {
-            for (int x = 0; x < MAP_WIDTH; x++) {
-                if (game.map.tiles[y][x] == 0) {
-                    Rectangle tileRect = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE};
-                    DrawRectangleLinesEx(tileRect, 1.0f, COLOR_GRID);
-                }
-            }
-        }
-    }
 }
 
 void DrawEntities(void) {
