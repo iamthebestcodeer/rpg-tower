@@ -319,11 +319,28 @@ Color ColorLerp(Color color1, Color color2, float factor) {
     return color1;
 }
 
-// ======================= rlgl (no-ops) =======================
+// ======================= rlgl (no-ops + activity log) =======================
+// The batched-circle path (EmitCircleFan) submits all geometry through
+// rlBegin(RL_TRIANGLES)/rlVertex2f. Those calls stay no-ops, but their
+// activity is recorded so tests can assert on how much geometry *would* have
+// been emitted (a positive-radius fan is 36 triangles x 3 vertices = 108
+// vertices; a non-positive radius emits none). Only rlBegin and rlVertex2f
+// are tracked - the other rlgl calls the game makes are plain no-ops.
 
-void rlBegin(int mode) { (void)mode; }
+static int s_rl_begin_count = 0;
+static int s_rl_vertex_count = 0;
+
+void StubResetRlglLog(void) {
+    s_rl_begin_count = 0;
+    s_rl_vertex_count = 0;
+}
+
+int StubRlBeginCount(void) { return s_rl_begin_count; }
+int StubRlVertexCount(void) { return s_rl_vertex_count; }
+
+void rlBegin(int mode) { (void)mode; s_rl_begin_count++; }
 void rlEnd(void) {}
-void rlVertex2f(float x, float y) { (void)x; (void)y; }
+void rlVertex2f(float x, float y) { (void)x; (void)y; s_rl_vertex_count++; }
 void rlColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
     (void)r; (void)g; (void)b; (void)a;
 }

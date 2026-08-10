@@ -38,6 +38,7 @@ extern int g_failures;
 static inline void ResetForTest(void) {
     StubResetInput();
     StubResetDrawLog();
+    StubResetRlglLog();
     ResetGame();
     game.camera.target = (Vector2){0, 0};
     game.camera.offset = (Vector2){0, 0};

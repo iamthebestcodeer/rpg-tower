@@ -129,11 +129,21 @@ static void TestTowerMeta(void) {
 
 static void TestEmitCircleFan(void) {
     ResetForTest();
+
+    // Non-positive radii short-circuit: no geometry is submitted. Note that
+    // EmitCircleFan only emits vertices; the caller owns the rlBegin block.
+    StubResetRlglLog();
     EmitCircleFan((Vector2){10, 10}, 0.0f, WHITE);   // early return
     EmitCircleFan((Vector2){10, 10}, -1.0f, WHITE);  // early return
+    CHECK(StubRlBeginCount() == 0);
+    CHECK(StubRlVertexCount() == 0);
+
+    // Positive radii emit a 36-triangle fan each (3 vertices per triangle).
+    StubResetRlglLog();
     EmitCircleFan((Vector2){10, 10}, 5.0f, WHITE);   // builds + emits
     EmitCircleFan((Vector2){20, 20}, 2.0f, RED);     // cached unit circle
-    CHECK(1);
+    CHECK(StubRlBeginCount() == 0);
+    CHECK(StubRlVertexCount() == 36 * 3 * 2);
 }
 
 static void TestInitResetMap(void) {
