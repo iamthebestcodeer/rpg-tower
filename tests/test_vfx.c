@@ -51,8 +51,8 @@ static void TestSpawnParticles(void) {
 
     // wrap-around allocation across the two passes
     ResetForTest();
-    for (int i = 2900; i < MAX_PARTICLES; i++) game.particles[i].active = true;
-    game.nextFreeParticle = 2950;
+    for (int i = 2100; i < MAX_PARTICLES; i++) game.particles[i].active = true;
+    game.nextFreeParticle = 2150;
     SpawnParticles((Vector2){50, 50}, 100, WHITE, BLACK, 100.0f, 5.0f, 1.0f, false);
     CHECK(CountActiveParticles() == 200);
     CHECK(game.nextFreeParticle == 100);
@@ -117,11 +117,13 @@ static void TestDrawVFX(void) {
     SpawnParticles((Vector2){100, 100}, 5, WHITE, BLACK, 50.0f, 4.0f, 1.0f, false);
     AddFloatingText((Vector2){200, 200}, "FLOAT", COLOR_ENERGY, true);
     DrawVFX();
-    // all 5 particles emitted into the single batched fan pass (36 tris x 3 vtx)
-    CHECK(StubRlBeginCount() == 1);
-    CHECK(StubRlVertexCount() == 5 * 36 * 3);
-    // active floating text is drawn (shadow + main calls)
-    CHECK(StubFindText("FLOAT") >= 0);
+    // Particles and floating text render through DrawTexturePro now (sprite
+    // quads + one quad per glyph), so no manual rlgl fan pass is emitted.
+    CHECK(StubRlBeginCount() == 0);
+    CHECK(StubRlVertexCount() == 0);
+    // 5 particle sprites + critical "FLOAT" text (shadow + main passes, 5
+    // glyphs each) = 5 + 10 texture draws.
+    CHECK(StubDrawTextureProCount() == 5 + 2 * 5);
 }
 
 void TestVFX(void) {

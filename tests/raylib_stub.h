@@ -29,11 +29,12 @@ void StubSetRandomSeed(unsigned int seed);  // seed the deterministic LCG
 // draw they assert on and use the helpers in test_util.h (StubFindText,
 // StubFindCircle, StubFindLine).
 typedef enum {
-    STUB_DRAW_TEXT,        // DrawText:              x,y = pos, w = fontSize, text
-    STUB_DRAW_RECT,        // DrawRectangle:         x,y,w,h
-    STUB_DRAW_CIRCLE_FILL, // DrawCircleV:           x,y = center, w = radius
-    STUB_DRAW_CIRCLE_LINE, // DrawCircleLines:       x,y = center, w = radius
-    STUB_DRAW_LINE         // DrawLineEx:            x,y = start, w,h = end
+    STUB_DRAW_TEXT,         // DrawText:              x,y = pos, w = fontSize, text
+    STUB_DRAW_RECT,         // DrawRectangle:         x,y,w,h
+    STUB_DRAW_ROUNDED_RECT, // DrawRectangleRounded:  x,y,w,h (GuiButton bounds)
+    STUB_DRAW_CIRCLE_FILL,  // DrawCircleV:           x,y = center, w = radius
+    STUB_DRAW_CIRCLE_LINE,  // DrawCircleLines:       x,y = center, w = radius
+    STUB_DRAW_LINE          // DrawLineEx:            x,y = start, w,h = end
 } StubDrawKind;
 
 typedef struct {
@@ -52,8 +53,10 @@ StubDrawCall StubDrawLogAt(int i);         // copy of entry i (all-zero if out o
 // The stub's rlgl calls are no-ops, but rlBegin/rlVertex2f activity is
 // recorded (the batched-circle path emits all geometry through them). Counts
 // are cumulative since the last StubResetRlglLog().
-void StubResetRlglLog(void);   // clear begin/vertex counts
+void StubResetRlglLog(void);   // clear begin/vertex/texture counts
 int  StubRlBeginCount(void);   // rlBegin calls since last reset
 int  StubRlVertexCount(void);  // rlVertex2f calls since last reset
+int  StubRlLastBeginVertexCount(void); // rlVertex2f calls in the latest rlBegin block
+int  StubDrawTextureProCount(void);    // DrawTexturePro calls since last reset
 
 #endif // RAYLIB_STUB_H

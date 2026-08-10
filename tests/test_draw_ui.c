@@ -81,15 +81,10 @@ static void TestDrawEnemies(void) {
     }
     game.globalTime = 1.0f;
     DrawEnemies();
-    // Every damaged enemy gets a partial health-bar fill (height 6, width
-    // exactly half the bar: 20, or 30 for the boss); the full-HP fast enemy
-    // gets none, so exactly 7 fills are logged.
-    int bars = 0;
-    for (int i = 0; i < StubDrawLogCount(); i++) {
-        StubDrawCall c = StubDrawLogAt(i);
-        if (c.kind == STUB_DRAW_RECT && fabsf(c.h - 6.0f) <= 0.5f && c.w > 0.5f && c.w < 39.5f) bars++;
-    }
-    CHECK(bars == 7);
+    // Every damaged enemy gets a health bar (background + fill rects, 6
+    // vertices each) emitted into the final batched rlgl block; the full-HP
+    // fast enemy gets none, so exactly 7*2 rects are submitted there.
+    CHECK(StubRlLastBeginVertexCount() == 7 * 2 * 6);
 }
 
 static void TestDrawTowers(void) {
@@ -183,10 +178,10 @@ static void TestDrawProjectiles(void) {
     UpdateTowers(0.1f); // energy bolt (glow fan)
 
     DrawProjectiles();
-    // single batched fan pass: cannon shell (physical, no glow) + pulse bolt
-    // (energy) + its glow ring => 3 fans of 36 triangles x 3 vertices
+    // single batched fan pass: cannon shell (8-seg, physical, no glow) +
+    // pulse bolt (6-seg, energy) + its glow ring (12-seg) => (8+6+12)*3 vtx
     CHECK(StubRlBeginCount() == 1);
-    CHECK(StubRlVertexCount() == 3 * 36 * 3);
+    CHECK(StubRlVertexCount() == (8 + 6 + 12) * 3);
 }
 
 static void TestDrawUIBasics(void) {
@@ -270,6 +265,47 @@ static void TestSetTooltipAndDraw(void) {
     // description line inside the clamped box at (1189, 723)
     CHECK(StubFindTextAt("Title", 1179 + 10, 678 + 10));
     CHECK(StubFindTextAt("Line one", 1179 + 10, 678 + 45));
+
+    // A long single-line description is word-wrapped to the box width so it
+    // cannot run off the right edge of the screen (stub MeasureText = len*size*0.6,
+    // so each wrapped line holds at most 31 chars at 16px).
+    game.tooltip.visible = true;
+    game.tooltip.title = "T";
+    game.tooltip.description =
+        "Long description that is much wider than the tooltip box width limit of three hundred pixels";
+    StubSetMousePosition(100, 100);
+    StubResetDrawLog();
+    DrawTooltip();
+    CHECK(StubFindText("Long description that is much") >= 0);
+    CHECK(StubFindText("wider than the tooltip box") >= 0);
+    CHECK(StubFindText("width limit of three hundred") >= 0);
+    CHECK(StubFindText("pixels") >= 0);
+    // ...and never as one unwrapped line.
+    CHECK(StubFindText("Long description that is much wider than the tooltip box width limit of three hundred pixels") < 0);
+
+    // Pathological input that used to overflow the wrap's trial buffer: a
+    // single 127-char word fills a line exactly, then the next word hit the
+    // terminator write one byte past the buffer. The output must still be
+    // two wrapped lines (no lost words). The stub draw log truncates each
+    // line to its text field capacity (minus the terminator), so assert on
+    // that prefix rather than hard-coding the field's current size.
+    static char pathological[192];
+    memset(pathological, 'a', 127);
+    pathological[127] = ' ';
+    pathological[128] = 'B';
+    pathological[129] = '\0';
+    game.tooltip.visible = true;
+    game.tooltip.title = "T";
+    game.tooltip.description = pathological;
+    StubSetMousePosition(100, 100);
+    StubResetDrawLog();
+    DrawTooltip();
+    char prefix[sizeof(((StubDrawCall*)0)->text)];
+    memset(prefix, 'a', sizeof(prefix) - 1);
+    prefix[sizeof(prefix) - 1] = '\0';
+    CHECK(StubFindText(prefix) >= 0);
+    CHECK(StubFindText("B") >= 0);
+
     game.tooltip.visible = false;
     DrawTooltip(); // early return
 }
@@ -327,7 +363,7 @@ static void TestInspectorInteractions(void) {
     ResetForTest();
     PlaceTower(5, 5, TOWER_PULSE);
     game.selectedTowerIndex = 0;
-    // targeting mode button: {970, 545, 300, 40}
+    // targeting mode button: {970, 553, 300, 40}
     StubSetMousePosition(1000, 560);
     StubClickMouse(MOUSE_LEFT_BUTTON);
     DrawUI(true);
@@ -351,14 +387,49 @@ static void TestUpgradePaths(void) {
     CHECK(game.towers[0].stats.level == TOWER_BASE_MAX_LEVEL);
     game.selectedTowerIndex = 0;
     int gold0 = game.gold, aether0 = game.aether;
-    // upgrade path button 0: {970, 630, 300, 70}
-    StubSetMousePosition(1000, 660);
+    // upgrade path button 0: {970, 633, 300, 48}
+    StubSetMousePosition(1000, 650);
     StubClickMouse(MOUSE_LEFT_BUTTON);
     DrawUI(true);
     CHECK(game.towers[0].type == TOWER_T4_PULSE_REPEATER);
     CHECK(game.gold == gold0 - 800);
     CHECK(game.aether == aether0 - 90);
     CHECK(game.towers[0].totalCost == 100 + 800);
+}
+
+static void TestUpgradePathsFitOnScreen(void) {
+    ResetForTest();
+    game.gold = 5000; game.aether = 200;
+    PlaceTower(5, 5, TOWER_PULSE);
+    GrantXP(0, 1000);
+    game.selectedTowerIndex = 0;
+    StubSetMousePosition(100, 100);
+    StubResetDrawLog();
+    DrawUI(true);
+
+    // Both upgrade options must be drawn (labels omit the redundant "T4: "
+    // prefix so they fit the sidebar width)...
+    int first = StubFindText("Pulse Repeater (800G, 90A)");
+    int second = StubFindText("Marksman Laser (1000G, 100A)");
+    CHECK(first >= 0);
+    CHECK(second >= 0);
+
+    // ...and the second one must sit fully above the sell button instead of
+    // being drawn underneath it. GuiButton logs its bounds as a rounded rect,
+    // so assert on the second button's recorded rectangle directly: its
+    // bottom edge must be at or above the sell button's top edge. The label
+    // is centered vertically in its button, so its vertical midpoint (y + 9)
+    // falls inside the button that owns it.
+    float secondLabelY = StubDrawLogAt(second).y;
+    bool secondButtonFits = false;
+    for (int i = 0; i < StubDrawLogCount(); i++) {
+        StubDrawCall c = StubDrawLogAt(i);
+        if (c.kind == STUB_DRAW_ROUNDED_RECT &&
+            secondLabelY + 9.0f >= c.y && secondLabelY + 9.0f <= c.y + c.h) {
+            secondButtonFits = (c.y + c.h <= SCREEN_HEIGHT - 50);
+        }
+    }
+    CHECK(secondButtonFits);
 }
 
 static void TestUpgradePathsNonBase(void) {
@@ -368,14 +439,14 @@ static void TestUpgradePathsNonBase(void) {
     UpgradeTower(&game.towers[0], TOWER_T4_PULSE_REPEATER);
     game.selectedTowerIndex = 0;
     DrawUI(true); // specialized: no xp bar / upgrade paths
-    DrawTowerUpgradePaths(&game.towers[0], true); // non-base -> early return
+    DrawTowerUpgradePaths(&game.towers[0], 595, true); // non-base -> early return
 
-    // tier-4 tower: specialized inspector shown. The paths header is drawn
-    // before the type switch, but the base-only upgrade buttons (the actual
-    // controls) must be absent.
+    // tier-4 tower: specialized inspector shown, and the upgrade section
+    // returns before drawing either the header or the base-only upgrade
+    // buttons (the actual controls).
     CHECK(StubFindText("Specialized Tower (Max Tier)") >= 0);
-    CHECK(StubFindText("T4: Pulse Repeater (800G, 90A)") < 0);
-    CHECK(StubFindText("T4: Marksman Laser (1000G, 100A)") < 0);
+    CHECK(StubFindText("Pulse Repeater (800G, 90A)") < 0);
+    CHECK(StubFindText("Marksman Laser (1000G, 100A)") < 0);
 }
 
 static void TestBlizzardInspector(void) {
@@ -405,6 +476,7 @@ void TestDrawUI(void) {
     TestDrawTowerInspector();
     TestInspectorInteractions();
     TestUpgradePaths();
+    TestUpgradePathsFitOnScreen();
     TestUpgradePathsNonBase();
     TestBlizzardInspector();
 }
