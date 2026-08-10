@@ -33,11 +33,11 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-raylib
 
-      - name: Build game.exe
+      - name: Build game.exe (release: stripped + assembly-optimized)
         shell: msys2 {0}
         run: |
           cd src
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Release
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
