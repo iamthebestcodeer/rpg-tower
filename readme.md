@@ -29,6 +29,23 @@ is the build the GitHub release workflow ships.
 .\game.exe
 ```
 
+## Tests
+
+The game logic is covered by a headless unit-test suite in `tests/` that links
+against a raylib stub (`tests/raylib_stub.c`) — no window or GPU required.
+`tests/run_tests.sh` compiles every `src/*.c` module with gcov coverage
+enabled, runs ~570 assertions across all modules (draw/UI tests assert on a
+recorded draw-call log rather than just "no crash"), and prints a per-module
+line coverage report:
+
+```bash
+bash tests/run_tests.sh
+```
+
+Current result: **~97% line coverage** across the 11 game modules (target
+≥ 80%). The test binary and coverage artifacts are written under
+`tests/build/` (gitignored).
+
 ## Clean rebuild
 
 ```powershell
