@@ -138,12 +138,13 @@ static void TestEmitCircleFan(void) {
     CHECK(StubRlBeginCount() == 0);
     CHECK(StubRlVertexCount() == 0);
 
-    // Positive radii emit a 36-triangle fan each (3 vertices per triangle).
+    // Positive radii emit an adaptive fan (3 vertices per segment): segment
+    // count grows with radius - 8 for a 5px circle, 4 for a 2px one.
     StubResetRlglLog();
-    EmitCircleFan((Vector2){10, 10}, 5.0f, WHITE);   // builds + emits
-    EmitCircleFan((Vector2){20, 20}, 2.0f, RED);     // cached unit circle
+    EmitCircleFan((Vector2){10, 10}, 5.0f, WHITE);   // 8 segments
+    EmitCircleFan((Vector2){20, 20}, 2.0f, RED);     // cached unit circle, 4 segments
     CHECK(StubRlBeginCount() == 0);
-    CHECK(StubRlVertexCount() == 36 * 3 * 2);
+    CHECK(StubRlVertexCount() == (8 + 4) * 3);
 }
 
 static void TestInitResetMap(void) {

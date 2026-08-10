@@ -425,7 +425,7 @@ void DrawTextBatched(Font font, const char* text, Vector2 position, float fontSi
 void DrawHeroStatus(void);
 void DrawBuildMenu(bool interactive);
 void DrawTowerInspector(bool interactive);
-void DrawTowerUpgradePaths(Tower* t, bool interactive);
+void DrawTowerUpgradePaths(Tower* t, int startY, bool interactive);
 void DrawTooltip(void);
 void SetTooltip(const char* title, const char* description, Rectangle bounds);
 

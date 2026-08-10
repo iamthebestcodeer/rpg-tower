@@ -166,6 +166,7 @@ bool IsRenderTextureValid(RenderTexture2D target) {
 
 static StubDrawCall s_draw_log[MAX_STUB_DRAW_CALLS];
 static int s_draw_log_count = 0;
+static int s_texture_pro_count = 0;
 
 void StubResetDrawLog(void) { s_draw_log_count = 0; }
 
@@ -278,6 +279,72 @@ void DrawLineEx(Vector2 startPos, Vector2 endPos, float thick, Color color) {
 void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
                     Vector2 origin, float rotation, Color tint) {
     (void)texture; (void)source; (void)dest; (void)origin; (void)rotation; (void)tint;
+    s_texture_pro_count++;
+}
+
+// ======================= fonts / text =======================
+// The batched text renderer (DrawTextBatched) dereferences the default
+// font's glyph/rect arrays, so the stub returns a minimal valid font
+// rather than a zeroed one.
+
+static GlyphInfo s_stub_glyph = { 0 };
+static Rectangle s_stub_glyph_rec = { 0, 0, 8, 16 };
+static Font s_stub_font = { 0 };
+static bool s_stub_font_ready = false;
+
+Font GetFontDefault(void) {
+    if (!s_stub_font_ready) {
+        s_stub_font.baseSize = 10;
+        s_stub_font.glyphCount = 1;
+        s_stub_font.glyphPadding = 0;
+        s_stub_font.recs = &s_stub_glyph_rec;
+        s_stub_font.glyphs = &s_stub_glyph;
+        s_stub_font_ready = true;
+    }
+    return s_stub_font;
+}
+
+unsigned int TextLength(const char* text) {
+    return (text != NULL) ? (unsigned int)strlen(text) : 0;
+}
+
+int GetCodepointNext(const char* text, int* codepointSize) {
+    if (codepointSize != NULL) *codepointSize = 0;
+    if (text == NULL || text[0] == '\0') return 0;
+    if (codepointSize != NULL) *codepointSize = 1;
+    return (unsigned char)text[0];
+}
+
+int GetGlyphIndex(Font font, int codepoint) {
+    (void)font; (void)codepoint;
+    return 0;
+}
+
+// ======================= image / texture =======================
+// Particle sprites are pre-rendered to textures at init; the stub keeps
+// these calls as inert no-ops that return zeroed handles.
+
+Image GenImageColor(int width, int height, Color color) {
+    (void)width; (void)height; (void)color;
+    Image image = { 0 };
+    return image;
+}
+
+void ImageDrawPixel(Image* dst, int posX, int posY, Color color) {
+    (void)dst; (void)posX; (void)posY; (void)color;
+}
+
+Texture2D LoadTextureFromImage(Image image) {
+    (void)image;
+    Texture2D texture = { 0 };
+    return texture;
+}
+
+void UnloadImage(Image image) { (void)image; }
+void UnloadTexture(Texture2D texture) { (void)texture; }
+
+void SetTextureFilter(Texture2D texture, int filter) {
+    (void)texture; (void)filter;
 }
 
 // ======================= color helpers =======================
@@ -339,19 +406,43 @@ Color ColorLerp(Color color1, Color color2, float factor) {
 
 static int s_rl_begin_count = 0;
 static int s_rl_vertex_count = 0;
+static int s_rl_begin_snapshot = 0;
+static int s_rl_last_begin_vertex_count = 0;
 
 void StubResetRlglLog(void) {
     s_rl_begin_count = 0;
     s_rl_vertex_count = 0;
+    s_rl_last_begin_vertex_count = 0;
+    s_texture_pro_count = 0;
 }
 
 int StubRlBeginCount(void) { return s_rl_begin_count; }
 int StubRlVertexCount(void) { return s_rl_vertex_count; }
 
-void rlBegin(int mode) { (void)mode; s_rl_begin_count++; }
-void rlEnd(void) {}
+// Vertices submitted inside the most recently completed rlBegin block. Lets
+// tests isolate one batched pass (e.g. health bars) from the geometry of
+// earlier passes in the same frame.
+int StubRlLastBeginVertexCount(void) { return s_rl_last_begin_vertex_count; }
+
+// DrawTexturePro calls since the last reset (the sprite-based particle pass
+// and every DrawTextBatched glyph go through it).
+int StubDrawTextureProCount(void) { return s_texture_pro_count; }
+
+void rlBegin(int mode) {
+    (void)mode;
+    s_rl_begin_count++;
+    s_rl_begin_snapshot = s_rl_vertex_count;
+}
+void rlEnd(void) {
+    s_rl_last_begin_vertex_count = s_rl_vertex_count - s_rl_begin_snapshot;
+}
 void rlVertex2f(float x, float y) { (void)x; (void)y; s_rl_vertex_count++; }
 void rlColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
     (void)r; (void)g; (void)b; (void)a;
 }
 void rlSetTexture(unsigned int id) { (void)id; }
+
+unsigned char* rlReadScreenPixels(int width, int height) {
+    (void)width; (void)height;
+    return NULL; // bench CHECK_RENDER probe: the caller already handles NULL
+}

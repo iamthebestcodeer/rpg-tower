@@ -52,8 +52,10 @@ StubDrawCall StubDrawLogAt(int i);         // copy of entry i (all-zero if out o
 // The stub's rlgl calls are no-ops, but rlBegin/rlVertex2f activity is
 // recorded (the batched-circle path emits all geometry through them). Counts
 // are cumulative since the last StubResetRlglLog().
-void StubResetRlglLog(void);   // clear begin/vertex counts
+void StubResetRlglLog(void);   // clear begin/vertex/texture counts
 int  StubRlBeginCount(void);   // rlBegin calls since last reset
 int  StubRlVertexCount(void);  // rlVertex2f calls since last reset
+int  StubRlLastBeginVertexCount(void); // rlVertex2f calls in the latest rlBegin block
+int  StubDrawTextureProCount(void);    // DrawTexturePro calls since last reset
 
 #endif // RAYLIB_STUB_H
