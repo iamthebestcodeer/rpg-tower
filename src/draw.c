@@ -1,5 +1,17 @@
 #include "game.h"
 
+static int pendingHeroSkill = -1;
+
+// Called from UpdateHeroLevelUp to apply a skill queued during Draw
+void ConsumePendingHeroSkill(void) {
+    if (pendingHeroSkill >= 0 && pendingHeroSkill < NUM_HERO_SKILLS && game.hero.skillPoints > 0) {
+        game.hero.skills[pendingHeroSkill]++;
+        game.hero.skillPoints--;
+        ApplyHeroSkills();
+    }
+    pendingHeroSkill = -1;
+}
+
 //----------------------------------------------------------------------------------
 // Drawing
 //----------------------------------------------------------------------------------
@@ -13,7 +25,7 @@ void DrawGame(void) {
         DrawText("PRESTIGE EDITION", SCREEN_WIDTH/2 - MeasureText("PRESTIGE EDITION", 40)/2, SCREEN_HEIGHT/3 + 40, 40, COLOR_AETHER_RES);
         float alpha = (sinf(game.globalTime * 2.0f) + 1.0f) / 2.0f;
         DrawText("Click or Press ENTER to Start", SCREEN_WIDTH/2 - MeasureText("Click or Press ENTER to Start", 30)/2, SCREEN_HEIGHT/2, 30, Fade(COLOR_TEXT_PRIMARY, alpha));
-        DrawText("Controls: WASD (Move), Q (Dash), E (Burst), Space (Attack), 1-4/Click (Build), N (Next Wave), G (Grid)", 20, SCREEN_HEIGHT - 30, 18, COLOR_TEXT_MUTED);
+        DrawText("Controls: WASD (Move), Q (Dash), E (Burst), Space (Attack), 1-4/Click (Build), N (Next Wave)", 20, SCREEN_HEIGHT - 30, 18, COLOR_TEXT_MUTED);
     } else {
         BeginMode2D(game.camera);
         DrawMap();
@@ -21,7 +33,7 @@ void DrawGame(void) {
         DrawVFX();
         EndMode2D();
 
-        DrawUI();
+        DrawUI(game.state == GS_PLAYING);
 
         if (game.state == GS_PAUSED) {
             DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.7f));
@@ -45,16 +57,15 @@ void DrawGame(void) {
             const char* skillNames[] = {"Vigor (Attack+)", "Agility (Speed/Dash CD)", "Burst Mastery (AoE+)", "Leadership (Tower XP Aura)"};
             const char* skillDescs[] = {"Increases basic attack damage.", "Increases movement speed and reduces Dash cooldown.", "Increases Aether Burst damage and radius.", "Towers near the hero gain bonus XP."};
 
+            bool isLevelUp = (game.state == GS_LEVEL_UP_HERO);
             for (int i = 0; i < NUM_HERO_SKILLS; i++) {
                 Rectangle btnBounds = {panel.x + 20, startY + i * (buttonHeight + spacing), panel.width - 40, buttonHeight};
                 char skillLabel[128];
                 snprintf(skillLabel, sizeof(skillLabel), "%s (Level %d)", skillNames[i], game.hero.skills[i]);
-                if (GuiButton(btnBounds, skillLabel, false, true)) {
-                    if (game.hero.skillPoints > 0) {
-                        game.hero.skills[i]++;
-                        game.hero.skillPoints--;
-                        ApplyHeroSkills();
-                    }
+                // Record the click; actual mutation happens in UpdateHeroLevelUp
+                bool enabled = isLevelUp;
+                if (GuiButton(btnBounds, skillLabel, false, enabled)) {
+                    pendingHeroSkill = i;
                 }
                 SetTooltip(skillNames[i], skillDescs[i], btnBounds);
             }
@@ -86,16 +97,6 @@ void DrawMap(void) {
     DrawRectangle(0, 0, GAME_AREA_WIDTH, SCREEN_HEIGHT, game.environmentColor);
     EndBlendMode();
 
-    if (game.showGrid) {
-        for (int y = 0; y < MAP_HEIGHT; y++) {
-            for (int x = 0; x < MAP_WIDTH; x++) {
-                if (game.map.tiles[y][x] == 0) {
-                    Rectangle tileRect = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE};
-                    DrawRectangleLinesEx(tileRect, 1.0f, COLOR_GRID);
-                }
-            }
-        }
-    }
 }
 
 void DrawEntities(void) {
@@ -181,7 +182,7 @@ void DrawTowers() {
             if (target) {
                 Vector2 dir = Vector2Subtract(target->position, t->position);
                 float angleToTarget = atan2f(dir.y, dir.x) * RAD2DEG;
-                float angleDiff = fabsf(fmodf(t->rotation - angleToTarget + 180.0f, 360.0f) - 180.0f);
+                float angleDiff = GetAngleDifference(t->rotation, angleToTarget);
                 if (angleDiff <= GetAimToleranceDegrees(t->type)) {
                     float beamWidth = (t->type == TOWER_CRYO) ? 3.0f : 5.0f;
                     DrawLineEx(t->position, target->position, beamWidth, Fade(turretColor, 0.9f));

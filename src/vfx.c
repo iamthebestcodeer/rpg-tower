@@ -79,13 +79,16 @@ void SpawnParticles(Vector2 position, int count, Color startColor, Color endColo
         p->endSize = sizeEnd;
         p->gravity = gravity;
         float angle = GetRandomValue(0, 360) * DEG2RAD;
-        float magnitude = GetRandomValue(10, (int)speed);
+        int maxMagnitude = (int)speed;
+        int minMagnitude = (maxMagnitude < 10) ? 0 : 10;
+        if (minMagnitude > maxMagnitude) minMagnitude = maxMagnitude;
+        float magnitude = (float)GetRandomValue(minMagnitude, maxMagnitude);
         p->velocity = (Vector2){ cosf(angle) * magnitude, sinf(angle) * magnitude };
         if (gravity && p->velocity.y > 0) p->velocity.y *= -0.5f;
     }
 }
 
-void AddFloatingText(Vector2 position, const char* text, Color color, bool critical) {
+static FloatingText *ReserveFloatingTextSlot(void) {
     int index = -1;
     for (int i = game.nextFreeFloatingText; i < MAX_FLOATING_TEXT; i++) {
         if (!game.floatingTexts[i].active) { index = i; break; }
@@ -95,11 +98,21 @@ void AddFloatingText(Vector2 position, const char* text, Color color, bool criti
             if (!game.floatingTexts[i].active) { index = i; break; }
         }
     }
-    if (index == -1) return;
+    if (index == -1) return NULL;
     game.nextFreeFloatingText = (index + 1) % MAX_FLOATING_TEXT;
-
-    FloatingText* ft = &game.floatingTexts[index];
+    FloatingText *ft = &game.floatingTexts[index];
     ft->active = true;
+    ft->position = (Vector2){0, 0};
+    ft->text[0] = '\0';
+    ft->lifetime = 1.5f;
+    ft->critical = false;
+    ft->velocityY = -40.0f;
+    return ft;
+}
+
+void AddFloatingText(Vector2 position, const char* text, Color color, bool critical) {
+    FloatingText *ft = ReserveFloatingTextSlot();
+    if (!ft) return;
     ft->position = (Vector2){position.x + GetRandomValue(-5, 5), position.y + GetRandomValue(-5, 5)};
     strncpy(ft->text, text, 31);
     ft->text[31] = '\0';
@@ -110,20 +123,8 @@ void AddFloatingText(Vector2 position, const char* text, Color color, bool criti
 }
 
 void AddFloatingTextFmt(Vector2 position, Color color, bool critical, const char* fmt, ...) {
-    int index = -1;
-    for (int i = game.nextFreeFloatingText; i < MAX_FLOATING_TEXT; i++) {
-        if (!game.floatingTexts[i].active) { index = i; break; }
-    }
-    if (index == -1) {
-        for (int i = 0; i < game.nextFreeFloatingText; i++) {
-            if (!game.floatingTexts[i].active) { index = i; break; }
-        }
-    }
-    if (index == -1) return;
-    game.nextFreeFloatingText = (index + 1) % MAX_FLOATING_TEXT;
-
-    FloatingText* ft = &game.floatingTexts[index];
-    ft->active = true;
+    FloatingText *ft = ReserveFloatingTextSlot();
+    if (!ft) return;
     ft->position = (Vector2){position.x + GetRandomValue(-5, 5), position.y + GetRandomValue(-5, 5)};
     ft->color = color;
     ft->lifetime = critical ? 2.0f : 1.5f;

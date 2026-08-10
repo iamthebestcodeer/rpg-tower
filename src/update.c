@@ -54,6 +54,7 @@ void UpdatePlaying(float dt) {
 
     HandleInput();
     ManageWaves(dt);
+    RebuildEnemyGrid();
     UpdateHero(dt);
     UpdateTowers(dt);
     UpdateEnemies(dt);
@@ -92,15 +93,16 @@ void UpdateEnvironment(float dt) {
     }
 }
 
+void ConsumePendingHeroSkill(void);
+
 void UpdateHeroLevelUp(float dt) {
     (void)dt;
+    ConsumePendingHeroSkill();
     if (game.hero.skillPoints == 0)
         game.state = GS_PLAYING;
 }
 
 void HandleInput(void) {
-    if (IsKeyPressed(KEY_G)) game.showGrid = !game.showGrid;
-
     Vector2 mousePosScreen = GetMousePosition();
     Vector2 mousePosWorld = GetScreenToWorld2D(mousePosScreen, game.camera);
 

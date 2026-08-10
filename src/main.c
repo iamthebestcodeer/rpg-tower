@@ -65,11 +65,16 @@ void ResetGame(void) {
     game.waveActive = false;
     game.placingTower = TOWER_NONE;
     game.selectedTowerIndex = -1;
-    game.showGrid = false;
     game.enemyIdCounter = 1;
     game.dayNightCycle = 0.0f;
     game.screenShakeDuration = 0.0f;
     game.screenShakeTime = 0.0f;
+    game.screenShakeIntensity = 0.0f;
+    game.enemiesToSpawn = 0;
+    game.spawnTimer = 0.0f;
+    game.tooltip.visible = false;
+    game.tooltip.title = NULL;
+    game.tooltip.description = NULL;
     // Match what the first UpdateEnvironment computes at dayNightCycle = 0 (full
     // daylight), so the first gameplay draw after starting/restarting isn't black
     // because UpdateEnvironment is skipped while the state is GS_TITLE.
@@ -161,5 +166,5 @@ void BuildStaticMapRT(void) {
         }
     }
     EndTextureMode();
-    game.mapRTBuilt = true;
+    game.mapRTBuilt = IsRenderTextureValid(game.mapRT);
 }
