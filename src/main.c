@@ -232,6 +232,7 @@ int main(int argc, char* argv[]) {
         game.globalTime += dt;
 
         if (g_benchMode) {
+            dt = 1.0f / 60.0f; // fixed timestep for deterministic benchmark
             double t0 = NowMs();
             UpdateGame(dt);
             double t1 = NowMs();

@@ -71,6 +71,7 @@ void DrawGame(void) {
         DrawUI(game.state == GS_PLAYING);
         TraceEnd(4);
 
+        TraceBegin(5); // overlays (pause/levelup/gameover/tooltip)
         if (game.state == GS_PAUSED) {
             DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.7f));
             DrawText("PAUSED (Press P)", SCREEN_WIDTH/2 - MeasureText("PAUSED (Press P)", 40)/2, SCREEN_HEIGHT/2 - 20, 40, WHITE);
@@ -116,7 +117,6 @@ void DrawGame(void) {
             DrawText("Press R to Restart", SCREEN_WIDTH/2 - MeasureText("Press R to Restart", 20)/2, SCREEN_HEIGHT/2 + 60, 20, WHITE);
         }
 
-        TraceBegin(5); // overlays (pause/levelup/gameover/tooltip)
         if (game.tooltip.visible)
             DrawTooltip();
         TraceEnd(5);

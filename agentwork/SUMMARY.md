@@ -2,7 +2,7 @@
 
 > **Purpose of this file:** permanent record of the "3x faster" optimization work on branch `perf/3x-optimization`.
 > **Status: COMPLETE.** The optimization is shipped, the invisible-text bug is **fixed and verified**, probes and the baseline worktree are cleaned up.
-> **All changes are UNCOMMITTED** in the working tree (9 modified files in `src/`, plus this doc in `agentwork/`).
+> **All changes are committed** in commit `1340ef4` (Fix unchecked --frames arg and nested draw-phase tracing).
 > Read `src/game.h`, `src/vfx.c`, `src/utils.c` first.
 
 ---

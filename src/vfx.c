@@ -11,8 +11,11 @@
 #define MAX_FLOATING_TEXT_PER_FRAME 48
 static int g_floatingTextBudget = MAX_FLOATING_TEXT_PER_FRAME;
 
-void UpdateVFX(float dt) {
+void ResetFloatingTextBudget(void) {
     g_floatingTextBudget = MAX_FLOATING_TEXT_PER_FRAME;
+}
+
+void UpdateVFX(float dt) {
 
     for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
         if (game.floatingTexts[i].active) {

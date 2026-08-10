@@ -5,6 +5,11 @@
 //----------------------------------------------------------------------------------
 
 void UpdateGame(float dt) {
+    // Reset floating text budget at the top-level frame boundary, before any
+    // producer (UpdatePlaying, UpdateHeroLevelUp, DrawGame) runs, ensuring it
+    // is reset exactly once per frame.
+    ResetFloatingTextBudget();
+
     // Only run simulation work in states where the world is live. Skipping it
     // in TITLE (nothing to animate) and PAUSED (the world is frozen, so
     // particles/floating text/day-night shouldn't keep costing CPU or drifting

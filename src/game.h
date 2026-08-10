@@ -442,6 +442,7 @@ void UpdateVFX(float dt);
 void DrawVFX(void);
 void InitVFX(void);
 void UnloadVFX(void);
+void ResetFloatingTextBudget(void);
 void SpawnParticles(Vector2 position, int count, Color startColor, Color endColor, float speed, float sizeStart, float sizeEnd, bool gravity);
 void AddFloatingText(Vector2 position, const char* text, Color color, bool critical);
 void AddFloatingTextFmt(Vector2 position, Color color, bool critical, const char* fmt, ...)
