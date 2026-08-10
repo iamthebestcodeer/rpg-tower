@@ -33,7 +33,7 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-raylib
 
-      - name: Build game.exe (release: stripped + assembly-optimized)
+      - name: 'Build game.exe (release: stripped + assembly-optimized)'
         shell: msys2 {0}
         run: |
           cd src
