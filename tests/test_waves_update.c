@@ -277,6 +277,29 @@ static void TestHandleInput(void) {
     CHECK(game.placingTower == TOWER_NONE);
 }
 
+static void TestMouseClickFrameScope(void) {
+    // A click set by StubClickMouse must only register in the frame it was set
+    // in: after a DrawGame() frame boundary, IsMouseButtonPressed must return
+    // false again (raylib scopes pressed edges to a single frame). Without
+    // that, the second HandleInput would see a phantom repeat click and select
+    // the tower it just placed.
+    ResetForTest();
+    game.state = GS_PLAYING;
+    StubSetMousePosition(100, 100); // world (100,100) -> tile (2,2)
+    StubClickMouse(MOUSE_LEFT_BUTTON);
+    game.placingTower = TOWER_PULSE;
+    HandleInput();
+    CHECK(CountActiveTowers() == 1); // frame 1 consumes the click
+
+    DrawGame(); // frame boundary: pressed edges expire
+
+    // frame 2: same click must not place another tower or select one
+    int towers = CountActiveTowers();
+    HandleInput();
+    CHECK(CountActiveTowers() == towers);
+    CHECK(game.selectedTowerIndex == -1);
+}
+
 static void TestUpdateHeroLevelUpDirect(void) {
     ResetForTest();
     game.state = GS_LEVEL_UP_HERO;
@@ -295,5 +318,6 @@ void TestWavesUpdate(void) {
     TestPlayingGameOver();
     TestUpdateEnvironment();
     TestHandleInput();
+    TestMouseClickFrameScope();
     TestUpdateHeroLevelUpDirect();
 }

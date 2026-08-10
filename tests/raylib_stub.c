@@ -205,7 +205,15 @@ static void StubLogText(const char *text, int posX, int posY, int fontSize, Colo
 // ======================= draw (no-ops + log) =======================
 
 void BeginDrawing(void) {}
-void EndDrawing(void) {}
+void EndDrawing(void) {
+    // raylib scopes pressed edges to a single frame (PollInputEvents clears
+    // them at the next frame boundary). Presses set by StubClickMouse/
+    // StubPressKey stay readable for the whole frame's update and draw phases
+    // but must not leak into later frames, or tests simulating multiple frames
+    // after one click would observe phantom repeat presses.
+    memset(s_keys_pressed, 0, sizeof(s_keys_pressed));
+    memset(s_mouse_pressed, 0, sizeof(s_mouse_pressed));
+}
 void ClearBackground(Color color) { (void)color; }
 void BeginMode2D(Camera2D camera) { (void)camera; }
 void EndMode2D(void) {}

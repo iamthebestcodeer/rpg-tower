@@ -115,7 +115,7 @@ static void TestHeroBurst(void) {
     Hero* h = &game.hero;
     h->position = (Vector2){200, 200};
     PlaceEnemyExact(0, ENEMY_TANK, 200, 260, 600);   // survives, gets weakened
-    PlaceEnemyExact(1, ENEMY_BASIC, 200, 300, 80);   // dies to 100 true dmg (hp < burstDamage)
+    PlaceEnemyExact(1, ENEMY_BASIC, 200, 300, 100);  // dies to exactly 100 true dmg (hp == burstDamage)
     RebuildEnemyGrid();
     StubPressKey(KEY_E);
     UpdateHero(1.0f);

@@ -250,7 +250,7 @@ static void TestDrawBuildMenu(void) {
     CHECK(game.placingTower == TOWER_NONE);
     // verify floating-text feedback was created
     bool foundFeedback = false;
-    for (int i = 0; i < MAX_FLOATING_TEXTS; i++) {
+    for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
         if (game.floatingTexts[i].active) {
             foundFeedback = true;
             break;
