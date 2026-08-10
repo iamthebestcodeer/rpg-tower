@@ -103,8 +103,6 @@ void UpdateHeroLevelUp(float dt) {
 }
 
 void HandleInput(void) {
-    if (IsKeyPressed(KEY_G)) game.showGrid = !game.showGrid;
-
     Vector2 mousePosScreen = GetMousePosition();
     Vector2 mousePosWorld = GetScreenToWorld2D(mousePosScreen, game.camera);
 

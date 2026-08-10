@@ -47,7 +47,6 @@ intermediate `.o` files).
 | Space | Attack |
 | 1–4 | Select tower to place |
 | N | Start next wave |
-| G | Toggle grid |
 | P | Pause / resume |
 | Escape / right-click | Cancel selection |
 

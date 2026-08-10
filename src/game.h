@@ -324,7 +324,6 @@ typedef struct {
 
     TowerType placingTower;
     int selectedTowerIndex;
-    bool showGrid;
     int enemyIdCounter;
     float globalTime;
     Tooltip tooltip;
