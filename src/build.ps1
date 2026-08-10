@@ -25,7 +25,7 @@ if ($LASTEXITCODE -ne 0) { throw 'pkg-config --libs raylib failed.' }
 $sources = (Get-ChildItem -Path $PSScriptRoot -Filter '*.c' -File).FullName
 if (-not $sources) { throw "No .c sources found in $PSScriptRoot." }
 
-$gccArgs = @('-std=c99', '-Wall', '-Wextra', '-O2') +
+$gccArgs = @('-std=c99', '-Wall', '-Wextra', '-O3') +
            $cflags +
            $sources +
            $libs + @('-lm', '-o', $Target)

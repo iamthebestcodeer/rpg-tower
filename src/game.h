@@ -404,6 +404,11 @@ void DrawHero(void);
 void DrawProjectiles(void);
 
 void DrawUI(bool interactive);
+
+// Batched circle rendering: emits a filled-circle fan (matching raylib's
+// DrawCircleV geometry) into the current rlBegin(RL_TRIANGLES) block, using a
+// precomputed unit circle so thousands of circles cost zero per-frame trig.
+void EmitCircleFan(Vector2 center, float radius, Color color);
 void DrawHeroStatus(void);
 void DrawBuildMenu(bool interactive);
 void DrawTowerInspector(bool interactive);

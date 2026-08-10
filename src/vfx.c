@@ -1,4 +1,5 @@
 #include "game.h"
+#include "rlgl.h"
 
 //----------------------------------------------------------------------------------
 // VFX
@@ -32,6 +33,19 @@ void UpdateVFX(float dt) {
 }
 
 void DrawVFX(void) {
+    // Batch every active particle into a single triangle fan: raylib's
+    // DrawCircleV() emits a 36-segment circle and recomputes sinf()/cosf() per
+    // segment per circle (plus a per-circle rlBegin/rlEnd), so MAX_PARTICLES
+    // alive can cost hundreds of thousands of trig calls per frame. The
+    // precomputed unit circle in EmitCircleFan makes this pure vertex
+    // submission with no per-frame trig.
+    //
+    // NOTE: bind the 1x1 default white texture (rlSetTexture(0)) so shapes
+    // render with vertex color, mirroring what raylib's own shapes drawing
+    // relies on. Do NOT use GetShapesTexture() here - it is the font atlas,
+    // and vertices would sample it with stale texcoords.
+    rlSetTexture(0);
+    rlBegin(RL_TRIANGLES);
     for (int i = 0; i < MAX_PARTICLES; i++) {
         if (!game.particles[i].active) continue;
         Particle* p = &game.particles[i];
@@ -39,8 +53,9 @@ void DrawVFX(void) {
         Color color = ColorLerp(p->startColor, p->endColor, progress);
         float size = Lerp(p->startSize, p->endSize, progress);
         color = ColorTint(color, game.environmentColor);
-        DrawCircleV(p->position, size, color);
+        EmitCircleFan(p->position, size, color);
     }
+    rlEnd();
 
     for (int i = 0; i < MAX_FLOATING_TEXT; i++) {
         if (!game.floatingTexts[i].active) continue;
@@ -54,38 +69,49 @@ void DrawVFX(void) {
 }
 
 void SpawnParticles(Vector2 position, int count, Color startColor, Color endColor, float speed, float sizeStart, float sizeEnd, bool gravity) {
-    for (int i = 0; i < count; i++) {
-        // Free-list allocation
-        int index = -1;
-        for (int j = game.nextFreeParticle; j < MAX_PARTICLES; j++) {
-            if (!game.particles[j].active) { index = j; break; }
-        }
-        if (index == -1) {
-            for (int j = 0; j < game.nextFreeParticle; j++) {
-                if (!game.particles[j].active) { index = j; break; }
-            }
-        }
-        if (index == -1) return;
-        game.nextFreeParticle = (index + 1) % MAX_PARTICLES;
+    // Free-list allocation, but scan the pool ONCE for up to `count` free
+    // slots instead of re-scanning from the head for every individual
+    // particle. The old loop was O(count * MAX_PARTICLES) worst case when the
+    // pool was densely populated (e.g. a 200-particle burst against ~3000
+    // live particles); a single pass is O(MAX_PARTICLES) total.
+    int spawned = 0;
+    int lastIndex = -1;
 
-        Particle* p = &game.particles[index];
-        p->active = true;
-        p->position = position;
-        p->startColor = startColor;
-        p->endColor = endColor;
-        p->life = 0;
-        p->maxLife = GetRandomValue(5, 20) / 10.0f;
-        p->startSize = sizeStart * (GetRandomValue(8, 12) / 10.0f);
-        p->endSize = sizeEnd;
-        p->gravity = gravity;
-        float angle = GetRandomValue(0, 360) * DEG2RAD;
-        int maxMagnitude = (int)speed;
-        int minMagnitude = (maxMagnitude < 10) ? 0 : 10;
-        if (minMagnitude > maxMagnitude) minMagnitude = maxMagnitude;
-        float magnitude = (float)GetRandomValue(minMagnitude, maxMagnitude);
-        p->velocity = (Vector2){ cosf(angle) * magnitude, sinf(angle) * magnitude };
-        if (gravity && p->velocity.y > 0) p->velocity.y *= -0.5f;
+    // Pass 0: head -> end; pass 1: wrap-around 0 -> head (same slots the old
+    // two-phase scan visited, just collected in one sweep).
+    for (int pass = 0; pass < 2 && spawned < count; pass++) {
+        int start = (pass == 0) ? game.nextFreeParticle : 0;
+        int end   = (pass == 0) ? MAX_PARTICLES : game.nextFreeParticle;
+        for (int j = start; j < end && spawned < count; j++) {
+            if (game.particles[j].active) continue;
+
+            Particle* p = &game.particles[j];
+            p->active = true;
+            p->position = position;
+            p->startColor = startColor;
+            p->endColor = endColor;
+            p->life = 0;
+            p->maxLife = GetRandomValue(5, 20) / 10.0f;
+            p->startSize = sizeStart * (GetRandomValue(8, 12) / 10.0f);
+            p->endSize = sizeEnd;
+            p->gravity = gravity;
+            float angle = GetRandomValue(0, 360) * DEG2RAD;
+            // Clamp the random magnitude so slow/small effects still emit
+            // particles (matches the remote clamp from the rebased branch).
+            int maxMagnitude = (int)speed;
+            int minMagnitude = (maxMagnitude < 10) ? 0 : 10;
+            if (minMagnitude > maxMagnitude) minMagnitude = maxMagnitude;
+            float magnitude = (float)GetRandomValue(minMagnitude, maxMagnitude);
+            p->velocity = (Vector2){ cosf(angle) * magnitude, sinf(angle) * magnitude };
+            if (gravity && p->velocity.y > 0) p->velocity.y *= -0.5f;
+
+            lastIndex = j;
+            spawned++;
+        }
     }
+
+    if (lastIndex >= 0)
+        game.nextFreeParticle = (lastIndex + 1) % MAX_PARTICLES;
 }
 
 static FloatingText *ReserveFloatingTextSlot(void) {
