@@ -1,0 +1,68 @@
+name: Build & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version, e.g. v1.1.0 (the leading "v" is optional)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark this release as a pre-release'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 (UCRT64) with raylib
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-raylib
+
+      - name: Build game.exe
+        shell: msys2 {0}
+        run: |
+          cd src
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-windows
+          path: src/game.exe
+          if-no-files-found: error
+
+      - name: Create tag and release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac
+
+          git tag "$VERSION"
+          git push origin "$VERSION"
+
+          PRERELEASE=""
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            PRERELEASE="--prerelease"
+          fi
+
+          gh release create "$VERSION" src/game.exe \
+            --title "Aetherium Vanguard $VERSION" \
+            --notes "Built from commit \`${{ github.sha }}\` on branch \`${{ github.ref_name }}\`." \
+            $PRERELEASE
