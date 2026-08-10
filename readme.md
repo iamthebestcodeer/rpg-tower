@@ -1,8 +1,6 @@
 # Aetherium Vanguard (Modular)
 
-A raylib tower-defense game split from the original single-file `game.c` into a
-structured multi-file C project. The split is a pure restructuring: no gameplay
-or behavior changes were introduced.
+A raylib tower-defense game.
 
 ## Requirements
 
