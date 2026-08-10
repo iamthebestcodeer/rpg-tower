@@ -38,6 +38,7 @@ extern int g_failures;
 static inline void ResetForTest(void) {
     StubResetInput();
     StubResetDrawLog();
+    StubResetRlglLog();
     ResetGame();
     game.camera.target = (Vector2){0, 0};
     game.camera.offset = (Vector2){0, 0};
@@ -130,6 +131,15 @@ static inline int StubFindCircle(StubDrawKind kind, float x, float y, float r, f
         StubDrawCall c = StubDrawLogAt(i);
         if (c.kind == kind && fabsf(c.x - x) <= tol && fabsf(c.y - y) <= tol &&
             fabsf(c.w - r) <= tol) return i;
+    }
+    return -1;
+}
+
+static inline int StubFindLine(float x0, float y0, float x1, float y1, float tol) {
+    for (int i = 0; i < StubDrawLogCount(); i++) {
+        StubDrawCall c = StubDrawLogAt(i);
+        if (c.kind == STUB_DRAW_LINE && fabsf(c.x - x0) <= tol && fabsf(c.y - y0) <= tol &&
+            fabsf(c.w - x1) <= tol && fabsf(c.h - y1) <= tol) return i;
     }
     return -1;
 }

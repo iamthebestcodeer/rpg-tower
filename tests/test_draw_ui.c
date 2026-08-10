@@ -3,6 +3,17 @@
 
 static Tower* TowerAt(int i) { return &game.towers[i]; }
 
+// True if a logged DrawText call drew `text` at exactly (x, y).
+static bool StubFindTextAt(const char* text, int x, int y) {
+    for (int i = 0; i < StubDrawLogCount(); i++) {
+        StubDrawCall c = StubDrawLogAt(i);
+        if (c.kind == STUB_DRAW_TEXT && (int)c.x == x && (int)c.y == y &&
+            strcmp(c.text, text) == 0)
+            return true;
+    }
+    return false;
+}
+
 static void TestDrawGameStates(void) {
     ResetForTest();
     game.state = GS_TITLE;
@@ -109,11 +120,17 @@ static void TestDrawTowers(void) {
             CHECK(UpgradeTower(&game.towers[idx], order[i]));
     }
 
-    // align a cryo tower with an enemy so the beam-draw path runs
+    // align a cryo tower with an enemy so the beam-draw path runs. SpawnEnemy
+    // snaps off-path spawns onto the path waypoints, so pin the enemy exactly
+    // below the tower (matching rotation 90) to keep the beam deterministic.
+    Vector2 cryoPos = {0};
     for (int i = 0; i < MAX_TOWERS; i++) {
         if (game.towers[i].active && game.towers[i].type == TOWER_CRYO) {
             Tower* t = &game.towers[i];
+            cryoPos = t->position;
             int e = SpawnEnemyAt(ENEMY_BASIC, t->position.x, t->position.y + 60);
+            game.enemies[e].position = (Vector2){t->position.x, t->position.y + 60.0f};
+            RebuildEnemyGrid();
             t->targetIndex = e;
             t->targetEnemyId = game.enemies[e].id;
             t->rotation = 90.0f;
@@ -125,14 +142,28 @@ static void TestDrawTowers(void) {
     // need sparkSeed % 16 == 0 -> (int)(globalTime*60) % 16 == 11)
     game.globalTime = 11.0f / 60.0f;
     DrawTowers();
-    CHECK(1);
+
+    // cryo beam (+ glow) drawn from the aligned tower to its target
+    CHECK(StubFindLine(cryoPos.x, cryoPos.y, cryoPos.x, cryoPos.y + 60.0f, 0.01f) >= 0);
+    // tesla sparkle: tower index 3 at tile (8,0), sparkSeed 11 + 3*7 = 32 ->
+    // 32 % 16 == 0, so the spark line is drawn at angle (32 + 3*13) % 360 = 71
+    Vector2 sparkStart = TileToWorldCenter(8, 0);
+    float sparkAngle = (float)((32 + 3 * 13) % 360) * DEG2RAD;
+    Vector2 sparkEnd = { sparkStart.x + cosf(sparkAngle) * 22.0f,
+                         sparkStart.y + sinf(sparkAngle) * 22.0f };
+    CHECK(StubFindLine(sparkStart.x, sparkStart.y, sparkEnd.x, sparkEnd.y, 0.01f) >= 0);
 }
 
 static void TestDrawHero(void) {
     ResetForTest();
+    // hero starts at (100,100): body circle r=15 + outline, no aura yet
+    DrawHero();
+    CHECK(StubFindCircle(STUB_DRAW_CIRCLE_FILL, 100.0f, 100.0f, 150.0f, 0.5f) < 0);
+
     game.hero.skills[SKILL_LEADERSHIP] = 1;
     DrawHero();
-    CHECK(1);
+    // leadership aura: 150-radius circle centered on the hero
+    CHECK(StubFindCircle(STUB_DRAW_CIRCLE_FILL, 100.0f, 100.0f, 150.0f, 0.5f) >= 0);
 }
 
 static void TestDrawProjectiles(void) {
@@ -152,7 +183,10 @@ static void TestDrawProjectiles(void) {
     UpdateTowers(0.1f); // energy bolt (glow fan)
 
     DrawProjectiles();
-    CHECK(1);
+    // single batched fan pass: cannon shell (physical, no glow) + pulse bolt
+    // (energy) + its glow ring => 3 fans of 36 triangles x 3 vertices
+    CHECK(StubRlBeginCount() == 1);
+    CHECK(StubRlVertexCount() == 3 * 36 * 3);
 }
 
 static void TestDrawUIBasics(void) {
@@ -224,11 +258,20 @@ static void TestSetTooltipAndDraw(void) {
     game.tooltip.description = "Line one\nLine two";
     StubSetMousePosition(100, 100);
     DrawTooltip();
-    StubSetMousePosition(1270, 790); // near edges -> repositioning
+    // box {115,115,96,97}: title at (125,125), description lines at y+45/+66
+    CHECK(StubFindTextAt("Title", 125, 125));
+    CHECK(StubFindTextAt("Line one", 125, 160));
+    CHECK(StubFindTextAt("Line two", 125, 181));
+
+    StubSetMousePosition(1270, 790); // near edges -> box clamps to screen edge
     DrawTooltip();
+    // width = 76+2*10 = 96 -> x = 1280-96-5 = 1179; height = 25+42+30 = 97 ->
+    // y = 790-97-15 = 678, so the title lands at (1189, 688) and the first
+    // description line inside the clamped box at (1189, 723)
+    CHECK(StubFindTextAt("Title", 1179 + 10, 678 + 10));
+    CHECK(StubFindTextAt("Line one", 1179 + 10, 678 + 45));
     game.tooltip.visible = false;
     DrawTooltip(); // early return
-    CHECK(1);
 }
 
 static void TestDrawBuildMenu(void) {
@@ -326,7 +369,13 @@ static void TestUpgradePathsNonBase(void) {
     game.selectedTowerIndex = 0;
     DrawUI(true); // specialized: no xp bar / upgrade paths
     DrawTowerUpgradePaths(&game.towers[0], true); // non-base -> early return
-    CHECK(1);
+
+    // tier-4 tower: specialized inspector shown. The paths header is drawn
+    // before the type switch, but the base-only upgrade buttons (the actual
+    // controls) must be absent.
+    CHECK(StubFindText("Specialized Tower (Max Tier)") >= 0);
+    CHECK(StubFindText("T4: Pulse Repeater (800G, 90A)") < 0);
+    CHECK(StubFindText("T4: Marksman Laser (1000G, 100A)") < 0);
 }
 
 static void TestBlizzardInspector(void) {
@@ -337,7 +386,8 @@ static void TestBlizzardInspector(void) {
     game.selectedTowerIndex = 0;
     StubSetMousePosition(100, 100);
     DrawUI(true); // blizzard inspector: no targeting button
-    CHECK(1);
+    CHECK(StubFindText("Slow Aura: 75%") >= 0);     // blizzard-specific stat shown
+    CHECK(StubFindText("Targeting Mode:") < 0);     // targeting control omitted
 }
 
 void TestDrawUI(void) {

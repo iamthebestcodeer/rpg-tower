@@ -37,6 +37,12 @@ static void TestSpawnParticles(void) {
     ResetForTest();
     SpawnParticles((Vector2){50, 50}, 1, WHITE, BLACK, 100.0f, 5.0f, 1.0f, true);
     CHECK(CountActiveParticles() == 1);
+    Particle* gp = &game.particles[0];
+    CHECK(gp->active);
+    CHECK(gp->gravity);
+    CHECK(gp->position.x == 50.0f && gp->position.y == 50.0f);
+    CHECK(gp->life == 0.0f);
+    CHECK(gp->velocity.y <= 0.0f); // downward velocity reflected upward
 
     // pool full -> spawn nothing
     for (int i = 0; i < MAX_PARTICLES; i++) game.particles[i].active = true;
@@ -74,9 +80,12 @@ static void TestAddFloatingText(void) {
     CHECK(!ft->critical);
     CHECK(ft->lifetime == 1.5f);
 
-    // long formatted text truncates safely
+    // long formatted text truncates safely into a fresh active slot
     AddFloatingTextFmt((Vector2){0, 0}, WHITE, false, "%0100d", 7);
-    CHECK(ft != NULL);
+    FloatingText* ftLong = &game.floatingTexts[2];
+    CHECK(ftLong->active);
+    CHECK(ftLong->text[sizeof(ftLong->text) - 1] == '\0'); // bounded + terminated
+    CHECK(strlen(ftLong->text) < sizeof(ftLong->text));
 
     // pool full -> no crash, no additions
     for (int i = 0; i < MAX_FLOATING_TEXT; i++) game.floatingTexts[i].active = true;
@@ -108,7 +117,11 @@ static void TestDrawVFX(void) {
     SpawnParticles((Vector2){100, 100}, 5, WHITE, BLACK, 50.0f, 4.0f, 1.0f, false);
     AddFloatingText((Vector2){200, 200}, "FLOAT", COLOR_ENERGY, true);
     DrawVFX();
-    CHECK(1);
+    // all 5 particles emitted into the single batched fan pass (36 tris x 3 vtx)
+    CHECK(StubRlBeginCount() == 1);
+    CHECK(StubRlVertexCount() == 5 * 36 * 3);
+    // active floating text is drawn (shadow + main calls)
+    CHECK(StubFindText("FLOAT") >= 0);
 }
 
 void TestVFX(void) {

@@ -1,10 +1,12 @@
 // Tests for waves.c (ManageWaves) and update.c (state machine, input, env).
 #include "test_util.h"
 
+// No enemy active -> sentinel -1 (int-backed enum, so valid; mirrors the
+// TOWER_NONE = -1 convention in game.h) rather than a real type like ENEMY_BASIC.
 static EnemyType FirstActiveEnemyType(void) {
     for (int i = 0; i < MAX_ENEMIES; i++)
         if (game.enemies[i].active) return game.enemies[i].type;
-    return ENEMY_BASIC;
+    return (EnemyType)-1;
 }
 
 static void TestWaveStart(void) {
