@@ -3,29 +3,6 @@
 
 static int pendingHeroSkill = -1;
 
-bool g_drawTrace = false;
-double g_drawTraceMs[DRAW_TRACE_PHASES] = {0};
-// Trace phases nest: DrawEntities (phase 2) runs its per-subgroup phases 6-8
-// inside it, so a single "current phase" slot would let an inner TraceBegin
-// overwrite the outer phase and the outer TraceEnd would then never match
-// (the aggregate time stays zero). Keep a LIFO stack of {phase, start} frames
-// so the outer phase still spans its whole group while each inner phase
-// measures only itself.
-typedef struct { int phase; double startMs; } TraceFrame;
-static TraceFrame g_traceStack[DRAW_TRACE_PHASES];
-static int g_traceDepth = 0;
-
-static void TraceBegin(int phase) {
-    if (!g_drawTrace || g_traceDepth >= DRAW_TRACE_PHASES) return;
-    g_traceStack[g_traceDepth++] = (TraceFrame){ phase, NowMs() };
-}
-static void TraceEnd(int phase) {
-    if (!g_drawTrace || g_traceDepth == 0) return;
-    if (g_traceStack[g_traceDepth - 1].phase != phase) return;
-    g_drawTraceMs[phase] += NowMs() - g_traceStack[g_traceDepth - 1].startMs;
-    g_traceDepth--;
-}
-
 // Called from UpdateHeroLevelUp to apply a skill queued during Draw
 void ConsumePendingHeroSkill(void) {
     if (pendingHeroSkill >= 0 && pendingHeroSkill < NUM_HERO_SKILLS && game.hero.skillPoints > 0) {
@@ -41,10 +18,8 @@ void ConsumePendingHeroSkill(void) {
 //----------------------------------------------------------------------------------
 
 void DrawGame(void) {
-    TraceBegin(0); // begin/clear
     BeginDrawing();
     ClearBackground(COLOR_BG);
-    TraceEnd(0);
 
     if (game.state == GS_TITLE) {
         DrawText("AETHERIUM VANGUARD", SCREEN_WIDTH/2 - MeasureText("AETHERIUM VANGUARD", 60)/2, SCREEN_HEIGHT/3 - 30, 60, COLOR_ENERGY);
@@ -53,25 +28,16 @@ void DrawGame(void) {
         DrawText("Click or Press ENTER to Start", SCREEN_WIDTH/2 - MeasureText("Click or Press ENTER to Start", 30)/2, SCREEN_HEIGHT/2, 30, Fade(COLOR_TEXT_PRIMARY, alpha));
         DrawText("Controls: WASD (Move), Q (Dash), E (Burst), Space (Attack), 1-4/Click (Build), N (Next Wave)", 20, SCREEN_HEIGHT - 30, 18, COLOR_TEXT_MUTED);
     } else {
-        TraceBegin(1); // map
         BeginMode2D(game.camera);
         DrawMap();
-        TraceEnd(1);
 
-        TraceBegin(2); // entities (enemies+towers+hero+projectiles)
         DrawEntities();
-        TraceEnd(2);
 
-        TraceBegin(3); // vfx (particles + floating text)
         DrawVFX();
-        TraceEnd(3);
         EndMode2D();
 
-        TraceBegin(4); // ui
         DrawUI(game.state == GS_PLAYING);
-        TraceEnd(4);
 
-        TraceBegin(5); // overlays (pause/levelup/gameover/tooltip)
         if (game.state == GS_PAUSED) {
             DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.7f));
             DrawText("PAUSED (Press P)", SCREEN_WIDTH/2 - MeasureText("PAUSED (Press P)", 40)/2, SCREEN_HEIGHT/2 - 20, 40, WHITE);
@@ -119,12 +85,9 @@ void DrawGame(void) {
 
         if (game.tooltip.visible)
             DrawTooltip();
-        TraceEnd(5);
     }
 
-    TraceBegin(9); // end drawing
     EndDrawing();
-    TraceEnd(9);
 }
 
 void DrawMap(void) {
@@ -140,18 +103,10 @@ void DrawMap(void) {
 }
 
 void DrawEntities(void) {
-    TraceBegin(6);
     DrawEnemies();
-    TraceEnd(6);
-
-    TraceBegin(7);
     DrawTowers();
-    TraceEnd(7);
-
-    TraceBegin(8);
     DrawHero();
     DrawProjectiles();
-    TraceEnd(8);
 }
 
 static float EnemyDrawSize(EnemyType type) {
