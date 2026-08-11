@@ -45,11 +45,13 @@ static inline void ResetForTest(void) {
     game.camera.rotation = 0.0f;
     game.camera.zoom = 1.0f;
     game.globalTime = 0.0f;
+    RebuildEnemyGrid();
 }
 
 // Manually activate an enemy at an exact world position with deterministic
 // stats. SpawnEnemy() snaps off-path spawns onto the path waypoints, which
 // makes exact-position assertions brittle; this helper bypasses snapping.
+// Call RebuildEnemyGrid() afterwards to insert it into the spatial grid.
 static inline int PlaceEnemyExact(int slot, EnemyType type, float x, float y, float hp) {
     Enemy* e = &game.enemies[slot];
     memset(e, 0, sizeof(Enemy));

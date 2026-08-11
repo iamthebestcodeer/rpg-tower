@@ -91,6 +91,7 @@ static void TestProjectileImpact(void) {
     PlaceTower(5, 5, TOWER_PULSE);
     Tower* t = TowerAt(0);
     int e = SpawnEnemyAt(ENEMY_BASIC, 220, 240); // 20 from tower
+    RebuildEnemyGrid();
     t->targetIndex = e;
     t->targetEnemyId = game.enemies[e].id;
     t->rotation = 90.0f;
@@ -106,6 +107,7 @@ static void TestProjectileImpact(void) {
 static void TestProjectileMoveAndExpire(void) {
     ResetForTest();
     int e = SpawnEnemyAt(ENEMY_BASIC, 600, 600);
+    RebuildEnemyGrid();
     Tower pulse = {0};
     pulse.type = TOWER_PULSE; pulse.stats.damage = 20; pulse.stats.level = 1;
     pulse.damageType = DMG_ENERGY; pulse.position = (Vector2){100, 100};
@@ -144,6 +146,7 @@ static void TestImpactAoE(void) {
     PlaceEnemyExact(0, ENEMY_BASIC, 400, 400, 100);
     PlaceEnemyExact(1, ENEMY_BASIC, 430, 400, 100);
     PlaceEnemyExact(2, ENEMY_BASIC, 700, 400, 100); // outside aoe
+    RebuildEnemyGrid();
     Projectile p = {0};
     p.active = true;
     p.position = (Vector2){400, 400};
@@ -171,6 +174,7 @@ static void TestChainLightning(void) {
     PlaceEnemyExact(0, ENEMY_BASIC, 380, 260, 100);
     PlaceEnemyExact(1, ENEMY_BASIC, 420, 260, 100);
     PlaceEnemyExact(2, ENEMY_BASIC, 460, 260, 100);
+    RebuildEnemyGrid();
     t->targetIndex = 0;
     t->targetEnemyId = game.enemies[0].id;
     t->rotation = 90.0f;

@@ -125,6 +125,7 @@ static void TestDrawTowers(void) {
             cryoPos = t->position;
             int e = SpawnEnemyAt(ENEMY_BASIC, t->position.x, t->position.y + 60);
             game.enemies[e].position = (Vector2){t->position.x, t->position.y + 60.0f};
+            RebuildEnemyGrid();
             t->targetIndex = e;
             t->targetEnemyId = game.enemies[e].id;
             t->rotation = 90.0f;

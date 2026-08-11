@@ -41,6 +41,11 @@
 #define WAVE_INTERVAL 25.0f
 #define TOWER_BASE_MAX_LEVEL 3
 
+// Spatial Grid
+#define GRID_COLS MAP_WIDTH
+#define GRID_ROWS MAP_HEIGHT
+#define MAX_ENEMIES_PER_CELL 32
+
 // Aesthetics
 #define COLOR_BG            (Color){ 10, 10, 20, 255 }
 #define COLOR_UI_BG         (Color){ 20, 20, 35, 255 }
@@ -287,6 +292,11 @@ typedef struct {
 } GameMap;
 
 typedef struct {
+    int indices[MAX_ENEMIES_PER_CELL];
+    int count;
+} GridCell;
+
+typedef struct {
     GameState state;
     GameMap map;
     Hero hero;
@@ -328,6 +338,9 @@ typedef struct {
     bool mapRTBuilt;
 
     bool occupied[MAP_HEIGHT][MAP_WIDTH];
+
+    // Spatial grid
+    GridCell enemyGrid[GRID_ROWS][GRID_COLS];
 } GameData;
 
 extern GameData game;
@@ -370,6 +383,8 @@ void ManageWaves(float dt);
 void HandleInput(void);
 void UpdateEnvironment(float dt);
 
+// Spatial grid
+void RebuildEnemyGrid(void);
 void GetEnemiesInRadius(Vector2 center, float radius, int* outIndices, int* outCount, int maxOut);
 
 void SpawnEnemy(EnemyType type, Vector2 position);

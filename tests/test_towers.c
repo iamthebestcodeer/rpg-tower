@@ -129,6 +129,7 @@ static void TestUpdateTowersFiring(void) {
     PlaceTower(5, 5, TOWER_PULSE); // (220,220)
     Tower* t = TowerAt(0);
     int e = SpawnEnemyAt(ENEMY_BASIC, 220, 300);
+    RebuildEnemyGrid();
     t->targetIndex = e;
     t->targetEnemyId = game.enemies[e].id;
     t->rotation = 90.0f;
@@ -153,6 +154,7 @@ static void TestTargetAcquisition(void) {
     PlaceTower(5, 5, TOWER_PULSE);
     Tower* t = TowerAt(0);
     int e = SpawnEnemyAt(ENEMY_BASIC, 220, 300);
+    RebuildEnemyGrid();
     t->targetSearchTimer = 0.0f;
     UpdateTowers(0.1f);
     CHECK(t->targetIndex == e);
@@ -160,6 +162,7 @@ static void TestTargetAcquisition(void) {
 
     // target dies -> dropped, and search finds nothing
     game.enemies[e].active = false;
+    RebuildEnemyGrid();
     t->targetSearchTimer = 0.0f;
     UpdateTowers(0.1f);
     CHECK(t->targetIndex == -1);
@@ -183,6 +186,7 @@ static void TestTargetingModes(void) {
     game.enemies[mid].maxHp = 500;
     game.enemies[far].hp = 100;
     game.enemies[far].maxHp = 100;
+    RebuildEnemyGrid();
 
     t->targetingMode = TARGET_FIRST;
     t->targetIndex = -1; t->targetEnemyId = -1; t->targetSearchTimer = 0;
@@ -210,6 +214,7 @@ static void TestCryoBeam(void) {
     PlaceTower(5, 5, TOWER_CRYO);
     Tower* t = TowerAt(0);
     int e = SpawnEnemyAt(ENEMY_BASIC, 220, 300);
+    RebuildEnemyGrid();
     t->targetIndex = e;
     t->targetEnemyId = game.enemies[e].id;
     t->rotation = 90.0f;
@@ -229,6 +234,7 @@ static void TestFreezer(void) {
     UpgradeTower(t, TOWER_T4_CRYO_FREEZER);
     CHECK_NEAR(t->stats.fireRate, 1.5f, 0.01f);
     int e = SpawnEnemyAt(ENEMY_BASIC, 220, 300);
+    RebuildEnemyGrid();
     t->targetIndex = e;
     t->targetEnemyId = game.enemies[e].id;
     t->rotation = 90.0f;
@@ -248,6 +254,7 @@ static void TestBlizzard(void) {
     Tower* t = TowerAt(0);
     UpgradeTower(t, TOWER_T4_CRYO_BLIZZARD);
     int e = SpawnEnemyAt(ENEMY_BASIC, 220, 300); // dist 80 < range 120
+    RebuildEnemyGrid();
     float hp0 = game.enemies[e].hp;
     UpdateTowers(0.1f);
     CHECK(game.enemies[e].hp < hp0);
@@ -270,6 +277,7 @@ static void TestMortar(void) {
     Tower* t = TowerAt(0);
     UpgradeTower(t, TOWER_T4_CANNON_MORTAR);
     SpawnEnemyAt(ENEMY_BASIC, 220, 300);
+    RebuildEnemyGrid();
     UpdateTowers(0.1f); // global range: fires even without aim alignment
     CHECK(CountActiveProjectiles() == 1);
     Projectile* p = &game.projectiles[0];
@@ -287,6 +295,7 @@ static void TestTowerIdle(void) {
     PlaceTower(5, 5, TOWER_PULSE);
     Tower* t = TowerAt(0);
     t->rotation = 45.0f;
+    RebuildEnemyGrid();
     UpdateTowers(0.5f); // no enemies: rotation eases back to 0
     CHECK_NEAR(t->rotation, 0.0f, 2.0f);
 }

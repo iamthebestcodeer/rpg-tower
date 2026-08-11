@@ -34,7 +34,7 @@ ships.
 The game logic is covered by a headless unit-test suite in `tests/` that links
 against a raylib stub (`tests/raylib_stub.c`) — no window or GPU required.
 `tests/run_tests.sh` compiles every `src/*.c` module with gcov coverage
-enabled, runs 609 assertions across all modules (draw/UI tests assert on a
+enabled, runs ~570 assertions across all modules (draw/UI tests assert on a
 recorded draw-call log rather than just "no crash"), and prints a per-module
 line coverage report:
 
@@ -42,7 +42,7 @@ line coverage report:
 bash tests/run_tests.sh
 ```
 
-Current result: **~91% line coverage** across the 11 game modules (target
+Current result: **~97% line coverage** across the 11 game modules (target
 ≥ 80%). The test binary and coverage artifacts are written under
 `tests/build/` (gitignored).
 
@@ -78,7 +78,7 @@ intermediate `.o` files).
 | `update.c` | Top-level update/state/input/environment functions |
 | `hero.c` | Hero skills, movement, attacks, XP, level-up |
 | `towers.c` | Tower updating, placement, sale, upgrades, stats, tower XP |
-| `enemies.c` | Enemy update/spawn/death, radius queries, damage and status processing |
+| `enemies.c` | Spatial grid, enemy update/spawn/death, damage and status processing |
 | `projectiles.c` | Projectile creation, updating, impacts, damage/effects |
 | `waves.c` | Wave scheduling and spawning |
 | `draw.c` | Top-level game, map, entity, enemy, tower, hero, and projectile drawing |
