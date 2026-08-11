@@ -77,7 +77,6 @@ static void TestHeroAttack(void) {
     Hero* h = &game.hero;
     h->position = (Vector2){200, 200};
     PlaceEnemyExact(0, ENEMY_BASIC, 200, 240, 100); // 40 < attackRange 65
-    RebuildEnemyGrid();
     float hp0 = game.enemies[0].hp;
     StubSetKeyDown(KEY_SPACE, true);
     UpdateHero(1.0f);
@@ -89,7 +88,6 @@ static void TestHeroAttack(void) {
     // no enemy in range: no attack
     StubResetInput();
     PlaceEnemyExact(1, ENEMY_BASIC, 200, 400, 100); // out of range
-    RebuildEnemyGrid();
     float hp2 = game.enemies[1].hp;
     h->currentCooldown = 0;
     StubSetKeyDown(KEY_SPACE, true);
@@ -102,7 +100,6 @@ static void TestHeroAttackKills(void) {
     Hero* h = &game.hero;
     h->position = (Vector2){200, 200};
     PlaceEnemyExact(0, ENEMY_BASIC, 200, 240, 20);
-    RebuildEnemyGrid();
     int gold0 = game.gold;
     StubSetKeyDown(KEY_SPACE, true);
     UpdateHero(1.0f);
@@ -116,7 +113,6 @@ static void TestHeroBurst(void) {
     h->position = (Vector2){200, 200};
     PlaceEnemyExact(0, ENEMY_TANK, 200, 260, 600);   // survives, gets weakened
     PlaceEnemyExact(1, ENEMY_BASIC, 200, 300, 100);  // dies to exactly 100 true dmg (hp == burstDamage)
-    RebuildEnemyGrid();
     StubPressKey(KEY_E);
     UpdateHero(1.0f);
     CHECK(game.enemies[0].active);

@@ -39,7 +39,7 @@ This is the build used by the GitHub release workflow.
 The game logic is covered by a headless unit-test suite in `../tests/` that
 links against a raylib stub (`../tests/raylib_stub.c`) — no window or GPU
 required. `../tests/run_tests.sh` compiles every `src/*.c` module with gcov
-coverage enabled, runs ~570 assertions across all modules (draw/UI tests assert on a
+coverage enabled, runs 609 assertions across all modules (draw/UI tests assert on a
 recorded draw-call log rather than just "no crash"), and prints a per-module
 line coverage report:
 
@@ -47,7 +47,7 @@ line coverage report:
 bash ../tests/run_tests.sh
 ```
 
-Current result: **~97% line coverage** across the 11 game modules (target
+Current result: **~91% line coverage** across the 11 game modules (target
 ≥ 80%). Test artifacts are written under `../tests/build/` (gitignored).
 
 ## Clean rebuild
@@ -82,7 +82,7 @@ intermediate `.o` files).
 | `update.c` | Top-level update/state/input/environment functions |
 | `hero.c` | Hero skills, movement, attacks, XP, level-up |
 | `towers.c` | Tower updating, placement, sale, upgrades, stats, tower XP |
-| `enemies.c` | Spatial grid, enemy update/spawn/death, damage and status processing |
+| `enemies.c` | Enemy update/spawn/death, radius queries, damage and status processing |
 | `projectiles.c` | Projectile creation, updating, impacts, damage/effects |
 | `waves.c` | Wave scheduling and spawning |
 | `draw.c` | Top-level game, map, entity, enemy, tower, hero, and projectile drawing |
@@ -108,13 +108,13 @@ intermediate `.o` files).
   `sinf()`/`cosf()` for every segment of every circle every frame, which with
   `MAX_PARTICLES` alive is hundreds of thousands of trig calls per frame; the
   batched path costs zero per-frame trig.
-- **Spatial grid:** enemy queries (tower targeting, AoE, hero attacks) go
-  through the spatial grid, rebuilt before tower queries and again before
-  projectile impacts (enemy movement invalidates cell membership mid-frame).
+- **Linear enemy queries:** radius queries (tower targeting, AoE, hero
+  attacks) scan the live enemy array directly. At most 300 enemies are alive,
+  so a scan costs a few microseconds per query.
 
 ## Scope
 
 This restructuring preserves the original global-state design and gameplay
 behavior. Known gameplay quirks from the original single-file version (e.g. the
-double `RebuildEnemyGrid` call, level-up state flow) are intentionally kept
-as-is and are out of scope for this change.
+level-up state flow) are intentionally kept as-is and are out of scope for this
+change.

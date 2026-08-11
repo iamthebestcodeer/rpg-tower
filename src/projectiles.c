@@ -80,12 +80,6 @@ void FireProjectile(Tower* tower, Enemy* target) {
 }
 
 void UpdateProjectiles(float dt) {
-    // Enemies moved during UpdateEnemies, so the grid rebuilt for tower
-    // targeting at the start of the frame is now stale. Rebuild it here so
-    // projectile-impact AoE queries (HandleProjectileImpact) use current cell
-    // membership instead of omitting enemies that crossed a cell boundary.
-    RebuildEnemyGrid();
-
     for (int i = 0; i < MAX_PROJECTILES; i++) {
         if (!game.projectiles[i].active) continue;
         Projectile* p = &game.projectiles[i];

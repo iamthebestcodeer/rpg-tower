@@ -1,27 +1,5 @@
-// Tests for enemies.c: grid, radius queries, spawn, movement, statuses, death.
+// Tests for enemies.c: radius queries, spawn, movement, statuses, death.
 #include "test_util.h"
-
-static void TestGrid(void) {
-    ResetForTest();
-    // exact placement: SpawnEnemy would snap these onto the path waypoints
-    PlaceEnemyExact(0, ENEMY_BASIC, 100, 100, 100); // tile (2,2)
-    PlaceEnemyExact(1, ENEMY_BASIC, 60, 100, 100);  // tile (1,2)
-    RebuildEnemyGrid();
-    GridCell* cell = &game.enemyGrid[2][2];
-    bool foundA = false;
-    for (int k = 0; k < cell->count; k++) if (cell->indices[k] == 0) foundA = true;
-    CHECK(foundA);
-
-    game.enemies[1].active = false;
-    RebuildEnemyGrid();
-    cell = &game.enemyGrid[2][2];
-    foundA = false;
-    for (int k = 0; k < cell->count; k++) if (cell->indices[k] == 0) foundA = true;
-    CHECK(foundA);
-    // b's cell should no longer contain b
-    cell = &game.enemyGrid[2][1];
-    for (int k = 0; k < cell->count; k++) CHECK(cell->indices[k] != 1);
-}
 
 static void TestGetEnemiesInRadius(void) {
     ResetForTest();
@@ -32,7 +10,6 @@ static void TestGetEnemiesInRadius(void) {
 
     PlaceEnemyExact(0, ENEMY_BASIC, 200, 220, 100); // dist 20
     PlaceEnemyExact(1, ENEMY_BASIC, 350, 200, 100); // dist 150 -> outside
-    RebuildEnemyGrid();
     count = 0;
     GetEnemiesInRadius((Vector2){200, 200}, 100.0f, idxs, &count, MAX_ENEMIES);
     CHECK(count == 1);
@@ -41,7 +18,6 @@ static void TestGetEnemiesInRadius(void) {
     // maxOut cap
     PlaceEnemyExact(2, ENEMY_BASIC, 200, 230, 100);
     PlaceEnemyExact(3, ENEMY_BASIC, 200, 240, 100);
-    RebuildEnemyGrid();
     count = 0;
     GetEnemiesInRadius((Vector2){200, 200}, 100.0f, idxs, &count, 2);
     CHECK(count == 2);
@@ -316,7 +292,6 @@ static void TestHandleEnemyDeath(void) {
 }
 
 void TestEnemies(void) {
-    TestGrid();
     TestGetEnemiesInRadius();
     TestSpawnEnemyTypes();
     TestSpawnEnemySnap();

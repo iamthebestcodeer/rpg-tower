@@ -244,7 +244,6 @@ void ResetGame(void) {
     memset(game.particles, 0, sizeof(game.particles));
     memset(game.floatingTexts, 0, sizeof(game.floatingTexts));
     memset(game.occupied, 0, sizeof(game.occupied));
-    memset(game.enemyGrid, 0, sizeof(game.enemyGrid));
 
     game.lives = STARTING_LIVES;
     game.gold = STARTING_GOLD;

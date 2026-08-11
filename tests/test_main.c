@@ -18,7 +18,6 @@ int g_failures = 0;
 
 int main(void) {
     InitGame(); // map + hero + camera; stubbed render texture is fine headless
-    RebuildEnemyGrid();
 
     TestUtilsAndMain();
     TestHero();

@@ -4,56 +4,30 @@
 // Enemies
 //----------------------------------------------------------------------------------
 
-void RebuildEnemyGrid(void) {
-    memset(game.enemyGrid, 0, sizeof(game.enemyGrid));
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (!game.enemies[i].active) continue;
-        int cx = (int)(game.enemies[i].position.x / TILE_SIZE);
-        int cy = (int)(game.enemies[i].position.y / TILE_SIZE);
-        if (cx < 0 || cx >= GRID_COLS || cy < 0 || cy >= GRID_ROWS) continue;
-        GridCell* cell = &game.enemyGrid[cy][cx];
-        if (cell->count < MAX_ENEMIES_PER_CELL)
-            cell->indices[cell->count++] = i;
-    }
-}
-
 void GetEnemiesInRadius(Vector2 center, float radius, int* outIndices, int* outCount, int maxOut) {
     *outCount = 0;
-    int cx = (int)(center.x / TILE_SIZE);
-    int cy = (int)(center.y / TILE_SIZE);
-    int radCells = (int)ceilf(radius / TILE_SIZE);
     float radiusSqr = radius * radius;
 
-    for (int dy = -radCells; dy <= radCells; dy++) {
-        for (int dx = -radCells; dx <= radCells; dx++) {
-            int nx = cx + dx, ny = cy + dy;
-            if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) continue;
-            GridCell* cell = &game.enemyGrid[ny][nx];
-            for (int k = 0; k < cell->count; k++) {
-                int idx = cell->indices[k];
-                if (!game.enemies[idx].active) continue;
-                float distSqr = Vector2DistanceSqr(center, game.enemies[idx].position);
-                if (distSqr <= radiusSqr) {
-                    outIndices[(*outCount)++] = idx;
-                    if (*outCount >= maxOut) return;
-                }
-            }
+    // Plain linear scan over the live enemy array. MAX_ENEMIES is only 300, so
+    // brute force is faster and simpler than any spatial index here.
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (!game.enemies[i].active) continue;
+        float distSqr = Vector2DistanceSqr(center, game.enemies[i].position);
+        if (distSqr <= radiusSqr) {
+            outIndices[(*outCount)++] = i;
+            if (*outCount >= maxOut) return;
         }
     }
 }
 
 void UpdateEnemies(float dt) {
-    // The grid is intentionally NOT rebuilt here. It is rebuilt at the start of
-    // UpdateTowers (before any movement this frame) for tower queries, and again
-    // at the start of UpdateProjectiles so impact AoE sees post-movement
-    // positions. A rebuild here would be wasted work: positions change below.
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (!game.enemies[i].active) continue;
         Enemy* e = &game.enemies[i];
 
         ProcessStatusEffects(e, dt);
 
-        // Healer aura using grid
+        // Healer aura
         if (e->type == ENEMY_HEALER) {
             e->abilityTimer -= dt;
             if (e->abilityTimer <= 0) {
@@ -112,27 +86,6 @@ void UpdateEnemies(float dt) {
             e->active = false;
             SpawnParticles(e->position, 30, COLOR_DANGER, COLOR_DANGER, 100.0f, 10.0f, 2.0f, false);
             ScreenShake(5.0f, 0.3f);
-        }
-    }
-}
-
-// Remove every grid entry for an enemy index. SpawnEnemy reuses the first free
-// slot, which may have been freed earlier this frame (e.g. a spawner dying after
-// the frame-start rebuild); without this purge, the previous occupant's stale
-// entry stays in the grid and a radius query spanning both cells returns the
-// enemy twice.
-static void RemoveEnemyFromGrid(int index) {
-    for (int y = 0; y < GRID_ROWS; y++) {
-        for (int x = 0; x < GRID_COLS; x++) {
-            GridCell* cell = &game.enemyGrid[y][x];
-            for (int k = 0; k < cell->count; ) {
-                if (cell->indices[k] == index) {
-                    cell->indices[k] = cell->indices[cell->count - 1];
-                    cell->count--;
-                } else {
-                    k++;
-                }
-            }
         }
     }
 }
@@ -252,21 +205,6 @@ void SpawnEnemy(EnemyType type, Vector2 position) {
     }
     e->hp = e->maxHp;
     e->speed = e->baseSpeed;
-
-    // Insert immediately into spatial grid so same-frame queries (tower targeting /
-    // AoE) can find the new enemy even when the grid was rebuilt at frame start.
-    // If this slot was reused from an enemy that died this frame, purge its stale
-    // grid entry first, or a radius query spanning both cells reports it twice.
-    RemoveEnemyFromGrid(index);
-    {
-        int cx = (int)(e->position.x / TILE_SIZE);
-        int cy = (int)(e->position.y / TILE_SIZE);
-        if (cx >= 0 && cx < GRID_COLS && cy >= 0 && cy < GRID_ROWS) {
-            GridCell *cell = &game.enemyGrid[cy][cx];
-            if (cell->count < MAX_ENEMIES_PER_CELL)
-                cell->indices[cell->count++] = index;
-        }
-    }
 }
 
 float CalculateDamage(float baseDamage, DamageType type, Enemy* target) {

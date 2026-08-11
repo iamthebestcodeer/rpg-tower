@@ -59,7 +59,6 @@ void UpdatePlaying(float dt) {
 
     HandleInput();
     ManageWaves(dt);
-    RebuildEnemyGrid();
     UpdateHero(dt);
     UpdateTowers(dt);
     UpdateEnemies(dt);
