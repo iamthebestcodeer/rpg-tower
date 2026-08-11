@@ -40,6 +40,31 @@ void ConsumePendingHeroSkill(void) {
 // Drawing
 //----------------------------------------------------------------------------------
 
+// One-shot pixel probe (--bench): the harness requests a readback via
+// RequestPixelProbe and it runs here, inside DrawGame before EndDrawing, so
+// CheckRendering inspects the frame actually being presented instead of the
+// post-swap back buffer.
+static bool g_pixelProbePending = false;
+
+void RequestPixelProbe(void) {
+    g_pixelProbePending = true;
+}
+
+static bool TakePixelProbeRequest(void) {
+    bool pending = g_pixelProbePending;
+    g_pixelProbePending = false;
+    return pending;
+}
+
+#ifdef BENCH_UNIT_TEST
+// Headless tests drive BenchmarkTick directly, which requests the probe at
+// frame 10; clear it so a later DrawGame in another suite doesn't consume a
+// stale request (see game.h for the seam).
+void BenchTestClearPixelProbe(void) {
+    g_pixelProbePending = false;
+}
+#endif // BENCH_UNIT_TEST
+
 void DrawGame(void) {
     TraceBegin(0); // begin/clear
     BeginDrawing();
@@ -121,6 +146,9 @@ void DrawGame(void) {
             DrawTooltip();
         TraceEnd(5);
     }
+
+    if (TakePixelProbeRequest())
+        CheckRendering();
 
     TraceBegin(9); // end drawing
     EndDrawing();

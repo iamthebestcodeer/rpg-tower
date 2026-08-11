@@ -26,6 +26,9 @@ echo "Compiling game modules..."
 for m in "${MODULES[@]}"; do
     extra=()
     if [ "$m" = "main" ]; then extra=(-Dmain=game_renamed_main); fi
+    # The bench harness is a black box to the game; BENCH_UNIT_TEST exposes a
+    # tiny test seam (main.c/draw.c) so tests can drive the frame counter.
+    if [ "$m" = "main" ] || [ "$m" = "draw" ]; then extra+=(-DBENCH_UNIT_TEST); fi
     gcc $BASE $WARN "${extra[@]}" $CFLAGS -I"$ROOT/src" -I"$ROOT/tests" \
         -c "$ROOT/src/$m.c" -o "$BUILD/$m.o"
 done
@@ -34,8 +37,10 @@ echo "Compiling test harness..."
 gcc $BASE $WARN $CFLAGS -I"$ROOT/src" -I"$ROOT/tests" \
     -c "$ROOT/tests/raylib_stub.c" -o "$BUILD/raylib_stub.o"
 for t in test_main test_utils_main test_hero test_towers test_enemies \
-         test_projectiles test_waves_update test_vfx test_draw_ui; do
-    gcc $BASE $WARN $CFLAGS -I"$ROOT/src" -I"$ROOT/tests" \
+         test_projectiles test_waves_update test_vfx test_draw_ui test_bench; do
+    tflags=()
+    if [ "$t" = "test_bench" ]; then tflags=(-DBENCH_UNIT_TEST); fi
+    gcc $BASE $WARN "${tflags[@]}" $CFLAGS -I"$ROOT/src" -I"$ROOT/tests" \
         -c "$ROOT/tests/$t.c" -o "$BUILD/$t.o"
 done
 

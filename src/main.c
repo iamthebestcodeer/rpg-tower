@@ -89,7 +89,10 @@ static bool g_benchPixelsChecked = false;
 
 // Sanity probe: count non-background pixels plus particle-colored pixels in the
 // game area, so we can verify the world (and particles specifically) render.
-static void CheckRendering(void) {
+// Executed inside DrawGame just before EndDrawing (see RequestPixelProbe), so
+// the readback samples the frame being presented rather than the post-swap
+// back buffer.
+void CheckRendering(void) {
     int w = GAME_AREA_WIDTH, h = SCREEN_HEIGHT;
     unsigned char* px = rlReadScreenPixels(w, h);
     if (!px) { printf("CHECK_RENDER: read failed\n"); return; }
@@ -106,35 +109,56 @@ static void CheckRendering(void) {
     }
     printf("CHECK_RENDER: non_bg=%ld red=%ld cyan=%ld gray=%ld yellow=%ld\n", nonBg, red, cyan, gray, yellow);
     free(px);
-    g_benchPixelsChecked = true;
 }
 
-static bool BenchmarkTick(void) {
+// True when the frame just completed falls inside the measured sample window:
+// past the warm-up and within the requested frame count. Every accumulator
+// guards on this so the reported averages divide exactly the frames they sum.
+static bool IsBenchMeasuredFrame(void) {
+    return g_benchFrame > BENCH_WARMUP_FRAMES &&
+           g_benchFrame <= BENCH_WARMUP_FRAMES + g_benchTotalFrames;
+}
+
+// Advances the benchmark by one frame. `loopMs` is the whole iteration's wall
+// time, measured by the caller around UpdateGame + DrawGame, so the final
+// measured frame's loop time is still counted before the summary prints.
+static bool BenchmarkTick(double loopMs) {
     if (!g_benchReady) {
         g_benchReady = true;
         g_benchLastTime = NowMs();
         return false;
     }
-    if (!g_benchPixelsChecked && g_benchFrame == 10)
-        CheckRendering();
+
+    // One-shot render probe during the warm-up: the readback executes inside
+    // the next DrawGame, before EndDrawing, so it sees the freshly drawn frame.
+    if (!g_benchPixelsChecked && g_benchFrame == 10) {
+        g_benchPixelsChecked = true;
+        RequestPixelProbe();
+    }
 
     double now = NowMs();
     double ms = now - g_benchLastTime;
     g_benchLastTime = now;
     g_benchFrame++;
 
-    if (g_benchFrame > BENCH_WARMUP_FRAMES && g_benchFrame <= BENCH_WARMUP_FRAMES + g_benchTotalFrames) {
+    // Start the per-phase draw trace only once the warm-up is over: tracing
+    // from startup would pollute the totals, which are divided by the
+    // measured frame count.
+    if (g_benchFrame == BENCH_WARMUP_FRAMES)
+        g_drawTrace = true;
+
+    if (IsBenchMeasuredFrame()) {
         g_benchSumMs += ms;
         if (ms < g_benchMinMs) g_benchMinMs = ms;
         if (ms > g_benchMaxMs) g_benchMaxMs = ms;
         g_benchSamples[g_benchFrame - BENCH_WARMUP_FRAMES - 1] = ms;
-    }
 
-    // Per-phase timing for profiling (always tracked, printed at the end)
-    g_benchUpdateMs += g_benchLastUpdateMs;
-    g_benchDrawMs += g_benchLastDrawMs;
+        // Per-phase timing shares the measured window (warm-up frames are
+        // excluded, so the averages below divide exactly the frames they sum).
+        g_benchLoopMs += loopMs;
+        g_benchUpdateMs += g_benchLastUpdateMs;
+        g_benchDrawMs += g_benchLastDrawMs;
 
-    if (g_benchFrame > BENCH_WARMUP_FRAMES) {
         int pe = 0, en = 0, pr = 0, ft = 0;
         for (int i = 0; i < MAX_PARTICLES; i++) if (game.particles[i].active) pe++;
         for (int i = 0; i < MAX_ENEMIES; i++) if (game.enemies[i].active) en++;
@@ -175,6 +199,49 @@ static bool BenchmarkTick(void) {
     }
     return false;
 }
+
+#ifdef BENCH_UNIT_TEST
+// ------------------------------------------------------------------
+// Headless test seam (tests/run_tests.sh compiles with -DBENCH_UNIT_TEST;
+// declarations in game.h). The benchmark needs a window and real draw
+// calls, so unit tests drive the frame counter directly through these
+// hooks instead of running the game loop. Production builds compile the
+// whole section out.
+void BenchTestBegin(int totalFrames) {
+    g_benchReady = true; // arm the frame timer, like main's first iteration
+    g_benchLastTime = NowMs();
+    g_benchFrame = 0;
+    g_benchTotalFrames = totalFrames;
+    g_benchLastUpdateMs = g_benchLastDrawMs = 0.0;
+    g_benchLoopMs = g_benchUpdateMs = g_benchDrawMs = g_benchSumMs = 0.0;
+    g_benchMinMs = 1e9;
+    g_benchMaxMs = 0.0;
+    g_sumParticles = g_sumEnemies = g_sumProjectiles = g_sumTexts = 0;
+    g_benchPixelsChecked = false;
+    g_drawTrace = false;
+    free(g_benchSamples);
+    g_benchSamples = (double*)calloc((size_t)totalFrames, sizeof(double));
+}
+
+// One tick = one drawn frame, mirroring the bench-mode loop in main(): the
+// caller supplies the phase times and gets back whether the run completed.
+bool BenchTestTick(double loopMs, double updateMs, double drawMs) {
+    g_benchLastUpdateMs = updateMs;
+    g_benchLastDrawMs = drawMs;
+    return BenchmarkTick(loopMs);
+}
+
+double BenchTestLoopMs(void) { return g_benchLoopMs; }
+double BenchTestUpdateMs(void) { return g_benchUpdateMs; }
+double BenchTestDrawMs(void) { return g_benchDrawMs; }
+long BenchTestParticleLoad(void) { return g_sumParticles; }
+long BenchTestEnemyLoad(void) { return g_sumEnemies; }
+long BenchTestProjectileLoad(void) { return g_sumProjectiles; }
+long BenchTestTextLoad(void) { return g_sumTexts; }
+bool BenchTestTraceEnabled(void) { return g_drawTrace; }
+double BenchTestSampleAt(int index) { return g_benchSamples[index]; }
+int BenchTestWarmupFrames(void) { return BENCH_WARMUP_FRAMES; }
+#endif // BENCH_UNIT_TEST
 
 
 
@@ -221,7 +288,6 @@ int main(int argc, char* argv[]) {
 
     InitGame();
     if (g_benchMode) {
-        g_drawTrace = true;
         SetupBenchmarkScene();
         g_benchSamples = (double*)malloc((size_t)g_benchTotalFrames * sizeof(double));
         if (!g_benchSamples) {
@@ -253,8 +319,10 @@ int main(int argc, char* argv[]) {
             double t2 = NowMs();
             g_benchLastUpdateMs = t1 - t0;
             g_benchLastDrawMs = t2 - t1;
-            if (BenchmarkTick()) break;
-            g_benchLoopMs += NowMs() - iterStart;
+            // Measured before BenchmarkTick so the final frame's loop time is
+            // still counted (the harness's own overhead stays out of "other").
+            double loopMs = NowMs() - iterStart;
+            if (BenchmarkTick(loopMs)) break;
         } else {
             UpdateGame(dt);
             DrawGame();

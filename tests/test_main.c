@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 void TestUtilsAndMain(void);
+void TestBench(void);
 void TestHero(void);
 void TestTowers(void);
 void TestEnemies(void);
@@ -21,6 +22,7 @@ int main(void) {
     RebuildEnemyGrid();
 
     TestUtilsAndMain();
+    TestBench();
     TestHero();
     TestTowers();
     TestEnemies();

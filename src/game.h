@@ -370,6 +370,11 @@ void BuildStaticMapRT(void);
 void UpdateGame(float dt);
 void DrawGame(void);
 
+// One-shot render diagnostic (--bench): the harness requests a pixel readback
+// of the next drawn frame; it executes inside DrawGame before EndDrawing.
+void RequestPixelProbe(void);
+void CheckRendering(void);
+
 void UpdatePlaying(float dt);
 void UpdateHeroLevelUp(float dt);
 
@@ -403,6 +408,25 @@ void ApplyDamageAndEffects(Projectile* p, Enemy* target, bool isCritical);
 extern bool g_drawTrace;
 extern double g_drawTraceMs[DRAW_TRACE_PHASES];
 double NowMs(void); // high-resolution monotonic clock (ms), used by the bench + draw trace
+
+#ifdef BENCH_UNIT_TEST
+// Headless test seam (tests/run_tests.sh compiles with -DBENCH_UNIT_TEST):
+// the benchmark harness is window/GPU-bound, so unit tests drive its frame
+// counter directly instead of running the game loop.
+void BenchTestBegin(int totalFrames);
+bool BenchTestTick(double loopMs, double updateMs, double drawMs);
+double BenchTestLoopMs(void);
+double BenchTestUpdateMs(void);
+double BenchTestDrawMs(void);
+long BenchTestParticleLoad(void);
+long BenchTestEnemyLoad(void);
+long BenchTestProjectileLoad(void);
+long BenchTestTextLoad(void);
+bool BenchTestTraceEnabled(void);
+double BenchTestSampleAt(int index);
+int BenchTestWarmupFrames(void);
+void BenchTestClearPixelProbe(void);
+#endif // BENCH_UNIT_TEST
 
 void DrawMap(void);
 void DrawEntities(void);
