@@ -14,7 +14,7 @@ From `src/`:
 
 ```powershell
 .\build.ps1          # dev build
-.\build.ps1 -Release # release build (stripped + assembly-optimized)
+.\build.ps1 -Release # release build (assembly-optimized)
 ```
 
 Each runs a single `gcc` command with `-std=c99 -Wall -Wextra -O3`, resolving
