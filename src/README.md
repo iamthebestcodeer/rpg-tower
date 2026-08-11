@@ -16,14 +16,13 @@ From `src/`:
 
 ```powershell
 .\build.ps1          # dev build
-.\build.ps1 -Release # release build (stripped + assembly-optimized)
+.\build.ps1 -Release # release build (assembly-optimized)
 ```
 
 Each runs a single `gcc` command with `-std=c99 -Wall -Wextra -O3`, resolving
 raylib flags via `pkg-config`, and produces `game.exe`.
 
-`-Release` additionally strips all debug info and symbol tables (`-s`, no
-`.eh_frame` unwind tables) and enables assembly-level optimizations:
+`-Release` additionally enables assembly-level optimizations: `-DNDEBUG`,
 `-march=x86-64-v3` (AVX2/FMA/BMI2), `-funroll-loops`, `-fomit-frame-pointer`,
 and `-flto`. `-march=native` is deliberately avoided so the release binary never
 carries AVX-512 code from the GitHub runner that could crash on older CPUs.
