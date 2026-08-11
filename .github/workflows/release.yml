@@ -23,7 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2 (UCRT64) with raylib
+      - name: Setup MSYS2 (UCRT64) with raylib + UPX
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -32,12 +32,30 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-raylib
+            mingw-w64-ucrt-x86_64-upx
 
-      - name: 'Build game.exe (release)'
+      - name: 'Build game.exe (release: hardened + packed)'
         shell: msys2 {0}
         run: |
           cd src
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 -Release
+
+      - name: Verify no plaintext markers in binary
+        shell: msys2 {0}
+        run: |
+          echo "Checking that anti-RE strings are not present as plaintext..."
+          if grep -a -q "IsDebuggerPresent" src/game.exe; then
+            echo "::error::Plaintext IsDebuggerPresent leaked into binary!"
+            exit 1
+          fi
+          if grep -a -q "Aetherium Vanguard - OPTIMIZED" src/game.exe; then
+            echo "::error::Plaintext window title leaked into binary!"
+            exit 1
+          fi
+          echo "Plaintext check passed."
+          echo "UPX check:"
+          strings src/game.exe | head -n 40 || true
+          ls -lh src/game.exe
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

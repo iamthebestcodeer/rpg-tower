@@ -14,14 +14,14 @@ From `src/`:
 
 ```powershell
 .\build.ps1          # dev build
-.\build.ps1 -Release # release build (assembly-optimized)
+.\build.ps1 -Release # release build (stripped + assembly-optimized)
 ```
 
 Each runs a single `gcc` command with `-std=c99 -Wall -Wextra -O3`, resolving
-raylib flags via `pkg-config`, and produces `game.exe`. `-Release` enables
-assembly-level optimizations (`-DNDEBUG`, `-march=x86-64-v3`, `-funroll-loops`,
-`-fomit-frame-pointer`, `-flto`); this is the build the GitHub release workflow
-ships.
+raylib flags via `pkg-config`, and produces `game.exe`. `-Release` strips all
+debug info and symbol tables and enables assembly-level optimizations
+(`-march=x86-64-v3`, `-funroll-loops`, `-fomit-frame-pointer`, `-flto`); this
+is the build the GitHub release workflow ships.
 
 ## Run
 

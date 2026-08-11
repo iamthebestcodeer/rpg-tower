@@ -442,3 +442,8 @@ void rlColor4ub(unsigned char r, unsigned char g, unsigned char b, unsigned char
     (void)r; (void)g; (void)b; (void)a;
 }
 void rlSetTexture(unsigned int id) { (void)id; }
+
+unsigned char* rlReadScreenPixels(int width, int height) {
+    (void)width; (void)height;
+    return NULL; // bench CHECK_RENDER probe: the caller already handles NULL
+}

@@ -1,10 +1,12 @@
 #include "game.h"
+#include "rlgl.h"
+#include "protect.h"
 #include <time.h>
 
 GameData game = {0};
 
 // High-resolution monotonic clock for the benchmark (raylib's GetTime() proved
-// unreliable for stable per-frame timing on this build).
+// unreliable for fine-grained per-phase attribution on this build).
 double NowMs(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -83,29 +85,80 @@ static void SetupBenchmarkScene(void) {
         SpawnEnemy(mix[i % 8], game.map.waypoints[0]);
 }
 
-static bool BenchmarkTick(void) {
+static bool g_benchPixelsChecked = false;
+
+// Sanity probe: count non-background pixels plus particle-colored pixels in the
+// game area, so we can verify the world (and particles specifically) render.
+// Executed inside DrawGame just before EndDrawing (see RequestPixelProbe), so
+// the readback samples the frame being presented rather than the post-swap
+// back buffer.
+void CheckRendering(void) {
+    int w = GAME_AREA_WIDTH, h = SCREEN_HEIGHT;
+    unsigned char* px = rlReadScreenPixels(w, h);
+    if (!px) { printf("CHECK_RENDER: read failed\n"); return; }
+    long nonBg = 0, red = 0, cyan = 0, gray = 0, yellow = 0;
+    for (int i = 0; i < w * h; i++) {
+        unsigned char* p = px + i * 4;
+        int r = p[0], g = p[1], b = p[2];
+        if (abs(r - 10) > 6 || abs(g - 10) > 6 || abs(b - 20) > 6)
+            nonBg++;
+        if (r > 190 && g < 80 && b < 80) red++;
+        if (b > 200 && g > 150 && r < 100) cyan++;
+        if (r > 140 && g > 140 && b > 140 && abs(r - g) < 25 && abs(g - b) < 25) gray++;
+        if (r > 200 && g > 170 && b < 90) yellow++;
+    }
+    printf("CHECK_RENDER: non_bg=%ld red=%ld cyan=%ld gray=%ld yellow=%ld\n", nonBg, red, cyan, gray, yellow);
+    free(px);
+}
+
+// True when the frame just completed falls inside the measured sample window:
+// past the warm-up and within the requested frame count. Every accumulator
+// guards on this so the reported averages divide exactly the frames they sum.
+static bool IsBenchMeasuredFrame(void) {
+    return g_benchFrame > BENCH_WARMUP_FRAMES &&
+           g_benchFrame <= BENCH_WARMUP_FRAMES + g_benchTotalFrames;
+}
+
+// Advances the benchmark by one frame. `loopMs` is the whole iteration's wall
+// time, measured by the caller around UpdateGame + DrawGame, so the final
+// measured frame's loop time is still counted before the summary prints.
+static bool BenchmarkTick(double loopMs) {
     if (!g_benchReady) {
         g_benchReady = true;
         g_benchLastTime = NowMs();
         return false;
     }
+
+    // One-shot render probe during the warm-up: the readback executes inside
+    // the next DrawGame, before EndDrawing, so it sees the freshly drawn frame.
+    if (!g_benchPixelsChecked && g_benchFrame == 10) {
+        g_benchPixelsChecked = true;
+        RequestPixelProbe();
+    }
+
     double now = NowMs();
     double ms = now - g_benchLastTime;
     g_benchLastTime = now;
     g_benchFrame++;
 
-    if (g_benchFrame > BENCH_WARMUP_FRAMES && g_benchFrame <= BENCH_WARMUP_FRAMES + g_benchTotalFrames) {
+    // Start the per-phase draw trace only once the warm-up is over: tracing
+    // from startup would pollute the totals, which are divided by the
+    // measured frame count.
+    if (g_benchFrame == BENCH_WARMUP_FRAMES)
+        g_drawTrace = true;
+
+    if (IsBenchMeasuredFrame()) {
         g_benchSumMs += ms;
         if (ms < g_benchMinMs) g_benchMinMs = ms;
         if (ms > g_benchMaxMs) g_benchMaxMs = ms;
         g_benchSamples[g_benchFrame - BENCH_WARMUP_FRAMES - 1] = ms;
-    }
 
-    // Per-phase timing for profiling (always tracked, printed at the end)
-    g_benchUpdateMs += g_benchLastUpdateMs;
-    g_benchDrawMs += g_benchLastDrawMs;
+        // Per-phase timing shares the measured window (warm-up frames are
+        // excluded, so the averages below divide exactly the frames they sum).
+        g_benchLoopMs += loopMs;
+        g_benchUpdateMs += g_benchLastUpdateMs;
+        g_benchDrawMs += g_benchLastDrawMs;
 
-    if (g_benchFrame > BENCH_WARMUP_FRAMES) {
         int pe = 0, en = 0, pr = 0, ft = 0;
         for (int i = 0; i < MAX_PARTICLES; i++) if (game.particles[i].active) pe++;
         for (int i = 0; i < MAX_ENEMIES; i++) if (game.enemies[i].active) en++;
@@ -134,11 +187,61 @@ static bool BenchmarkTick(void) {
         printf("BENCHMARK load particles=%.0f enemies=%.0f projectiles=%.0f texts=%.0f\n",
                (double)g_sumParticles / g_benchTotalFrames, (double)g_sumEnemies / g_benchTotalFrames,
                (double)g_sumProjectiles / g_benchTotalFrames, (double)g_sumTexts / g_benchTotalFrames);
+        printf("BENCHMARK draw begin/clear=%.3f map=%.3f entities=%.3f vfx=%.3f ui=%.3f overlay=%.3f enddraw=%.3f | enemies=%.3f towers=%.3f hero+proj=%.3f\n",
+               g_drawTraceMs[0] / g_benchTotalFrames, g_drawTraceMs[1] / g_benchTotalFrames,
+               g_drawTraceMs[2] / g_benchTotalFrames, g_drawTraceMs[3] / g_benchTotalFrames,
+               g_drawTraceMs[4] / g_benchTotalFrames, g_drawTraceMs[5] / g_benchTotalFrames,
+               g_drawTraceMs[9] / g_benchTotalFrames,
+               g_drawTraceMs[6] / g_benchTotalFrames, g_drawTraceMs[7] / g_benchTotalFrames,
+               g_drawTraceMs[8] / g_benchTotalFrames);
         fflush(stdout);
         return true;
     }
     return false;
 }
+
+#ifdef BENCH_UNIT_TEST
+// ------------------------------------------------------------------
+// Headless test seam (tests/run_tests.sh compiles with -DBENCH_UNIT_TEST;
+// declarations in game.h). The benchmark needs a window and real draw
+// calls, so unit tests drive the frame counter directly through these
+// hooks instead of running the game loop. Production builds compile the
+// whole section out.
+void BenchTestBegin(int totalFrames) {
+    g_benchReady = true; // arm the frame timer, like main's first iteration
+    g_benchLastTime = NowMs();
+    g_benchFrame = 0;
+    g_benchTotalFrames = totalFrames;
+    g_benchLastUpdateMs = g_benchLastDrawMs = 0.0;
+    g_benchLoopMs = g_benchUpdateMs = g_benchDrawMs = g_benchSumMs = 0.0;
+    g_benchMinMs = 1e9;
+    g_benchMaxMs = 0.0;
+    g_sumParticles = g_sumEnemies = g_sumProjectiles = g_sumTexts = 0;
+    g_benchPixelsChecked = false;
+    g_drawTrace = false;
+    free(g_benchSamples);
+    g_benchSamples = (double*)calloc((size_t)totalFrames, sizeof(double));
+}
+
+// One tick = one drawn frame, mirroring the bench-mode loop in main(): the
+// caller supplies the phase times and gets back whether the run completed.
+bool BenchTestTick(double loopMs, double updateMs, double drawMs) {
+    g_benchLastUpdateMs = updateMs;
+    g_benchLastDrawMs = drawMs;
+    return BenchmarkTick(loopMs);
+}
+
+double BenchTestLoopMs(void) { return g_benchLoopMs; }
+double BenchTestUpdateMs(void) { return g_benchUpdateMs; }
+double BenchTestDrawMs(void) { return g_benchDrawMs; }
+long BenchTestParticleLoad(void) { return g_sumParticles; }
+long BenchTestEnemyLoad(void) { return g_sumEnemies; }
+long BenchTestProjectileLoad(void) { return g_sumProjectiles; }
+long BenchTestTextLoad(void) { return g_sumTexts; }
+bool BenchTestTraceEnabled(void) { return g_drawTrace; }
+double BenchTestSampleAt(int index) { return g_benchSamples[index]; }
+int BenchTestWarmupFrames(void) { return BENCH_WARMUP_FRAMES; }
+#endif // BENCH_UNIT_TEST
 
 
 
@@ -169,7 +272,12 @@ int main(int argc, char* argv[]) {
     // composite time, for little visible gain on flat-color shapes. Re-enable
     // with SetConfigFlags(FLAG_MSAA_4X_HINT) before InitWindow() if smoother
     // edges are preferred over lower GPU usage.
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Aetherium Vanguard");
+    // Window title is stored XOR-encrypted (0xA7) to avoid cleartext in .rdata
+    char winTitle[32] = {(char)0xE6,(char)0xC2,(char)0xD3,(char)0xCF,(char)0xC2,(char)0xD5,(char)0xCE,(char)0xD2,(char)0xCA,(char)0x87,(char)0xF1,(char)0xC6,(char)0xC9,(char)0xC0,(char)0xD2,(char)0xC6,(char)0xD5,(char)0xC3,(char)0x87,(char)0x8A,(char)0x87,(char)0xE8,(char)0xF7,(char)0xF3,(char)0xEE,(char)0xEA,(char)0xEE,(char)0xFD,(char)0xE2,(char)0xE3,0};
+    AV_Decrypt(winTitle, 30, 0xA7);
+    AV_AntiDebug(); // early anti-debug before any window creation
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, winTitle);
+    volatile char *scrub = (volatile char*)winTitle; for (int _i=0;_i<32;_i++) scrub[_i]=0;
     if (g_benchMode) {
         SetTargetFPS(0);             // uncapped so real frame time is measurable
         SetRandomSeed(1234);         // deterministic bench
@@ -194,6 +302,13 @@ int main(int argc, char* argv[]) {
         float dt = GetFrameTime();
         if (dt > 0.1f) dt = 0.1f;
         game.globalTime += dt;
+        // Periodic anti-debug: ~once every 5 seconds (throttled with static).
+        // AV_AntiDebug is cheap when no debugger is present except the timing probe,
+        // so we avoid calling it every frame (would be ~60x/sec during the whole 5th second).
+        {
+            static float av_lastCheck = -10.0f;
+            if (game.globalTime - av_lastCheck >= 5.0f) { av_lastCheck = game.globalTime; AV_AntiDebug(); }
+        }
 
         if (g_benchMode) {
             dt = 1.0f / 60.0f; // fixed timestep for deterministic benchmark
@@ -204,8 +319,10 @@ int main(int argc, char* argv[]) {
             double t2 = NowMs();
             g_benchLastUpdateMs = t1 - t0;
             g_benchLastDrawMs = t2 - t1;
-            if (BenchmarkTick()) break;
-            g_benchLoopMs += NowMs() - iterStart;
+            // Measured before BenchmarkTick so the final frame's loop time is
+            // still counted (the harness's own overhead stays out of "other").
+            double loopMs = NowMs() - iterStart;
+            if (BenchmarkTick(loopMs)) break;
         } else {
             UpdateGame(dt);
             DrawGame();
