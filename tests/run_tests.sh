@@ -20,7 +20,7 @@ CFLAGS="$(pkg-config --cflags raylib)"
 WARN="-Wall -Wextra"
 BASE="-std=c99 -O0 -g --coverage -DRAYMATH_STATIC_INLINE"
 
-MODULES=(utils waves enemies hero towers projectiles update vfx draw ui main)
+MODULES=(utils waves enemies hero towers projectiles update vfx draw ui main protect)
 
 echo "Compiling game modules..."
 for m in "${MODULES[@]}"; do

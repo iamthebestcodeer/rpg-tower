@@ -1,10 +1,12 @@
 #include "game.h"
+#include "rlgl.h"
+#include "protect.h"
 #include <time.h>
 
 GameData game = {0};
 
 // High-resolution monotonic clock for the benchmark (raylib's GetTime() proved
-// unreliable for stable per-frame timing on this build).
+// unreliable for fine-grained per-phase attribution on this build).
 double NowMs(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -83,12 +85,39 @@ static void SetupBenchmarkScene(void) {
         SpawnEnemy(mix[i % 8], game.map.waypoints[0]);
 }
 
+static bool g_benchPixelsChecked = false;
+
+// Sanity probe: count non-background pixels plus particle-colored pixels in the
+// game area, so we can verify the world (and particles specifically) render.
+static void CheckRendering(void) {
+    int w = GAME_AREA_WIDTH, h = SCREEN_HEIGHT;
+    unsigned char* px = rlReadScreenPixels(w, h);
+    if (!px) { printf("CHECK_RENDER: read failed\n"); return; }
+    long nonBg = 0, red = 0, cyan = 0, gray = 0, yellow = 0;
+    for (int i = 0; i < w * h; i++) {
+        unsigned char* p = px + i * 4;
+        int r = p[0], g = p[1], b = p[2];
+        if (abs(r - 10) > 6 || abs(g - 10) > 6 || abs(b - 20) > 6)
+            nonBg++;
+        if (r > 190 && g < 80 && b < 80) red++;
+        if (b > 200 && g > 150 && r < 100) cyan++;
+        if (r > 140 && g > 140 && b > 140 && abs(r - g) < 25 && abs(g - b) < 25) gray++;
+        if (r > 200 && g > 170 && b < 90) yellow++;
+    }
+    printf("CHECK_RENDER: non_bg=%ld red=%ld cyan=%ld gray=%ld yellow=%ld\n", nonBg, red, cyan, gray, yellow);
+    free(px);
+    g_benchPixelsChecked = true;
+}
+
 static bool BenchmarkTick(void) {
     if (!g_benchReady) {
         g_benchReady = true;
         g_benchLastTime = NowMs();
         return false;
     }
+    if (!g_benchPixelsChecked && g_benchFrame == 10)
+        CheckRendering();
+
     double now = NowMs();
     double ms = now - g_benchLastTime;
     g_benchLastTime = now;
@@ -134,6 +163,13 @@ static bool BenchmarkTick(void) {
         printf("BENCHMARK load particles=%.0f enemies=%.0f projectiles=%.0f texts=%.0f\n",
                (double)g_sumParticles / g_benchTotalFrames, (double)g_sumEnemies / g_benchTotalFrames,
                (double)g_sumProjectiles / g_benchTotalFrames, (double)g_sumTexts / g_benchTotalFrames);
+        printf("BENCHMARK draw begin/clear=%.3f map=%.3f entities=%.3f vfx=%.3f ui=%.3f overlay=%.3f enddraw=%.3f | enemies=%.3f towers=%.3f hero+proj=%.3f\n",
+               g_drawTraceMs[0] / g_benchTotalFrames, g_drawTraceMs[1] / g_benchTotalFrames,
+               g_drawTraceMs[2] / g_benchTotalFrames, g_drawTraceMs[3] / g_benchTotalFrames,
+               g_drawTraceMs[4] / g_benchTotalFrames, g_drawTraceMs[5] / g_benchTotalFrames,
+               g_drawTraceMs[9] / g_benchTotalFrames,
+               g_drawTraceMs[6] / g_benchTotalFrames, g_drawTraceMs[7] / g_benchTotalFrames,
+               g_drawTraceMs[8] / g_benchTotalFrames);
         fflush(stdout);
         return true;
     }
@@ -169,7 +205,12 @@ int main(int argc, char* argv[]) {
     // composite time, for little visible gain on flat-color shapes. Re-enable
     // with SetConfigFlags(FLAG_MSAA_4X_HINT) before InitWindow() if smoother
     // edges are preferred over lower GPU usage.
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Aetherium Vanguard");
+    // Window title is stored XOR-encrypted (0xA7) to avoid cleartext in .rdata
+    char winTitle[32] = {(char)0xE6,(char)0xC2,(char)0xD3,(char)0xCF,(char)0xC2,(char)0xD5,(char)0xCE,(char)0xD2,(char)0xCA,(char)0x87,(char)0xF1,(char)0xC6,(char)0xC9,(char)0xC0,(char)0xD2,(char)0xC6,(char)0xD5,(char)0xC3,(char)0x87,(char)0x8A,(char)0x87,(char)0xE8,(char)0xF7,(char)0xF3,(char)0xEE,(char)0xEA,(char)0xEE,(char)0xFD,(char)0xE2,(char)0xE3,0};
+    AV_Decrypt(winTitle, 30, 0xA7);
+    AV_AntiDebug(); // early anti-debug before any window creation
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, winTitle);
+    volatile char *scrub = (volatile char*)winTitle; for (int _i=0;_i<32;_i++) scrub[_i]=0;
     if (g_benchMode) {
         SetTargetFPS(0);             // uncapped so real frame time is measurable
         SetRandomSeed(1234);         // deterministic bench
@@ -180,6 +221,7 @@ int main(int argc, char* argv[]) {
 
     InitGame();
     if (g_benchMode) {
+        g_drawTrace = true;
         SetupBenchmarkScene();
         g_benchSamples = (double*)malloc((size_t)g_benchTotalFrames * sizeof(double));
         if (!g_benchSamples) {
@@ -194,6 +236,13 @@ int main(int argc, char* argv[]) {
         float dt = GetFrameTime();
         if (dt > 0.1f) dt = 0.1f;
         game.globalTime += dt;
+        // Periodic anti-debug: ~once every 5 seconds (throttled with static).
+        // AV_AntiDebug is cheap when no debugger is present except the timing probe,
+        // so we avoid calling it every frame (would be ~60x/sec during the whole 5th second).
+        {
+            static float av_lastCheck = -10.0f;
+            if (game.globalTime - av_lastCheck >= 5.0f) { av_lastCheck = game.globalTime; AV_AntiDebug(); }
+        }
 
         if (g_benchMode) {
             dt = 1.0f / 60.0f; // fixed timestep for deterministic benchmark

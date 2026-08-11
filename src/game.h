@@ -396,7 +396,13 @@ void FireProjectile(Tower* tower, Enemy* target);
 void HandleProjectileImpact(Projectile* p, Enemy* primaryTarget);
 void ApplyDamageAndEffects(Projectile* p, Enemy* target, bool isCritical);
 
-double NowMs(void); // high-resolution monotonic clock (ms), used by the bench
+// Draw-phase profiling (--bench only): when g_drawTrace is set, DrawGame
+// accumulates per-phase frame time in g_drawTraceMs so the benchmark can
+// attribute draw cost precisely.
+#define DRAW_TRACE_PHASES 10
+extern bool g_drawTrace;
+extern double g_drawTraceMs[DRAW_TRACE_PHASES];
+double NowMs(void); // high-resolution monotonic clock (ms), used by the bench + draw trace
 
 void DrawMap(void);
 void DrawEntities(void);
